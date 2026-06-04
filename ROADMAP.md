@@ -107,6 +107,25 @@ Recognition over recall: every action visible in the UI, shortcuts as accelerato
 | Local-only | partial | yes | yes | yes | no (iCloud) | **yes, by default** |
 | Price | free | free | free | free→$96/yr | $29.99/yr | **free** |
 
+## Versioning scheme
+
+Minor version = phase. Patch version = fixes within that phase. v1.0.0 is reserved for the first public release (notarized .dmg on GitHub Releases), cut whenever the product feels ready — not tied to a phase.
+
+| Version | Meaning | Status |
+|---|---|---|
+| v0.0.1 | Bootstrap: popup, search, pin, plain paste, privacy exclusions | ✅ tagged |
+| v0.1.0 | Phase 1 — predictability: main window, onboarding, link previews, capture hardening | ✅ tagged |
+| v0.1.1, v0.1.2, … | Fixes to Phase 1 as found | as needed |
+| v0.2.0 | Phase 2 — infinite storage (SQLite + FTS5 engine) | next |
+| v0.2.x | Phase 2 fixes | as needed |
+| v0.3.0 | Phase 3 — favorites, categories, collect mode | planned |
+| v0.4.0 | Phase 4 — power tier: queue, transforms, OCR, per-clip hotkeys | planned |
+| v0.5.0 | Phase 5 — reach: opt-in sync, iOS companion, on-device AI | planned |
+| v0.6.0 | Phase 6 — screenshot integration | planned |
+| v1.0.0 | First public release: notarized .dmg, website, announcement | when ready |
+
+A phase with no open fixes is simply done — we move on; no empty patch releases.
+
 ## Engineering checkpoints
 
 Phase 2 is the riskiest (storage migration) — ship it behind a "new engine" beta toggle first. Capture reliability (Phase 1.4) gets a regression test: scripted 100-copy burst, assert 100 rows. UI perf budget: popup opens in under 100 ms with 100k items in the DB. Every phase ends with the app notarized and a GitHub release so non-Xcode users can download a .dmg — that's the real "desktop app for everyone" milestone.

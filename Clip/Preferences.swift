@@ -30,7 +30,7 @@ final class Preferences: ObservableObject {
             Keys.pasteDirectly: true,
             Keys.ignoreConcealed: true,
             Keys.captureImages: true,
-            Keys.ignoredApps: [],
+            Keys.ignoredApps: [String](),
             // Default hotkey: ⌘⇧V (kVK_ANSI_V = 9)
             Keys.hotKeyCode: 9,
             Keys.hotKeyModifiers: cmdKey | shiftKey,

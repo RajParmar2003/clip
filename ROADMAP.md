@@ -70,6 +70,19 @@ Research: these are the features that remain genuinely power-exclusive across th
 3. **On-device AI (Apple Intelligence)**: summarize a long clip, clean up formatting, "find the URL I copied yesterday about X" natural-language search. Undercuts the Paste/Raycast AI subscriptions with zero server bill.
 4. **Sharing**: export a category as a file; AirDrop a clip set. No accounts, ever.
 
+## Phase 6 — Screenshot integration (v5)
+
+Every screenshot you take lands in Clip's history instantly — no Command-C required. This needs careful engineering because Apple gives no public "screenshot taken" API, and naive approaches break across macOS versions.
+
+**The robust design (in order of preference):**
+
+1. **Spotlight metadata watching, not folder watching.** macOS tags every system screenshot file with the Spotlight attribute `kMDItemIsScreenCapture = 1`. An `NSMetadataQuery` scoped to the user's home with that predicate fires when a screenshot file appears — regardless of where the user pointed `defaults write com.apple.screencapture location`, regardless of filename language ("Screenshot" vs "Bildschirmfoto"), and stable across macOS versions because it's indexed metadata, not a path convention. This is the approach mature screenshot tools rely on. A folder-path watcher is the fallback only if Spotlight indexing is disabled.
+2. **Respect the floating-thumbnail delay.** Since Mojave, macOS shows a corner thumbnail for ~5 seconds before writing the file; the metadata event arrives after. Clip must treat the event time, not file-creation time, as the moment of capture, and dedupe via content hash in case the user also hit the clipboard variant.
+3. **Clipboard-mode screenshots already work.** Command-Control-Shift-3/4 puts the image straight on the pasteboard — our existing watcher catches that today. The new path covers file-mode screenshots (the default).
+4. **Permissions, stated honestly.** Reading from Desktop triggers macOS's one-time folder-access consent (TCC). The setting ships off by default with a plain-language explanation, and turning it on walks the user through the prompt — same self-onboarding pattern as direct paste.
+5. **Smart behaviors once captured:** option to auto-copy the screenshot to the clipboard (take screenshot → it's already pasteable), OCR it on arrival (Phase 4 engine) so screenshots are text-searchable from the moment they exist, auto-file into a "Screenshots" category, and a setting to capture-then-delete-the-file for users who screenshot only to paste.
+6. **Version-proofing:** a small compatibility layer isolates everything Apple could change (attribute name, thumbnail timing, default location), with a startup self-test that takes no action but verifies the query fires on the current OS; if Apple breaks something in macOS 27, Clip degrades to folder-watching and tells the user instead of silently failing.
+
 ---
 
 ## Explicit non-goals

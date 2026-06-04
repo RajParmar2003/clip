@@ -5,6 +5,7 @@ DerivedData/
 xcuserdata/
 *.xcscmblueprint
 *.xccheckout
+Clip.xcodeproj/project.xcworkspace/
 
 # macOS
 .DS_Store

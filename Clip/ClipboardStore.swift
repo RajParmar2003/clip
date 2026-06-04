@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import os.log
 
 /// Watches NSPasteboard, maintains history, persists to disk, writes items back to the pasteboard.
 final class ClipboardStore: ObservableObject {
@@ -30,15 +31,41 @@ final class ClipboardStore: ObservableObject {
 
     // MARK: - Monitoring
 
+    private let log = Logger(subsystem: "com.rajparmar.Clip", category: "capture")
+
     func startMonitoring() {
         // NSPasteboard has no change notification on macOS; polling changeCount is the
         // standard approach (Maccy, Pastebot, Raycast all do this). 200ms is responsive
         // yet negligible CPU since we only compare an Int.
+        scheduleTimer()
+
+        // Reliability hardening: timers can be stale around sleep/wake, and the
+        // category-wide complaint against clipboard managers is silently missed
+        // copies. On wake (and on re-activation) force an immediate check and
+        // make sure the timer is alive.
+        let wsCenter = NSWorkspace.shared.notificationCenter
+        wsCenter.addObserver(self, selector: #selector(ensureMonitoring),
+                             name: NSWorkspace.didWakeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(ensureMonitoring),
+                                               name: NSApplication.didBecomeActiveNotification,
+                                               object: nil)
+    }
+
+    private func scheduleTimer() {
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             self?.checkPasteboard()
         }
         timer?.tolerance = 0.1
         RunLoop.main.add(timer!, forMode: .common)
+    }
+
+    @objc private func ensureMonitoring() {
+        if timer == nil || !(timer?.isValid ?? false) {
+            log.warning("capture timer was dead — restarting")
+            scheduleTimer()
+        }
+        checkPasteboard()
     }
 
     func stopMonitoring() {
@@ -49,6 +76,11 @@ final class ClipboardStore: ObservableObject {
     private func checkPasteboard() {
         let pb = NSPasteboard.general
         guard pb.changeCount != lastChangeCount else { return }
+        if pb.changeCount > lastChangeCount + 1 {
+            // More than one copy happened inside a poll window; we can only see
+            // the latest. Log it so misses are measurable, not mysterious.
+            log.info("changeCount jumped by \(pb.changeCount - self.lastChangeCount) — intermediate copy not captured")
+        }
         lastChangeCount = pb.changeCount
 
         if ignoreNextChange {
@@ -128,10 +160,19 @@ final class ClipboardStore: ObservableObject {
                 self.items.insert(existing, at: 0)
             } else {
                 self.items.insert(item, at: 0)
+                LinkMetadataFetcher.shared.enrich(item, in: self)
             }
             self.trim()
             self.save()
         }
+    }
+
+    /// Called back by LinkMetadataFetcher once a URL's title/icon arrive.
+    func applyLinkMetadata(itemID: UUID, title: String?, iconPNG: Data?) {
+        guard let idx = items.firstIndex(where: { $0.id == itemID }) else { return }
+        items[idx].linkTitle = title
+        items[idx].linkIconPNG = iconPNG
+        save()
     }
 
     func togglePin(_ item: ClipboardItem) {

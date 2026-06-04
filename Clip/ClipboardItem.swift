@@ -19,6 +19,9 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// RTF/HTML alongside plain text, so we can paste with formatting.
     var rtfData: Data?
     var htmlData: Data?
+    /// Filled in asynchronously for URL items when link previews are enabled.
+    var linkTitle: String?
+    var linkIconPNG: Data?
 
     init(content: ClipContent,
          sourceAppBundleID: String? = nil,
@@ -33,9 +36,24 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.isPinned = false
         self.rtfData = rtfData
         self.htmlData = htmlData
+        self.linkTitle = nil
+        self.linkIconPNG = nil
+    }
+
+    /// If this item is a single copied http(s) URL, returns it.
+    var asURL: URL? {
+        guard case .text(let s) = content else { return nil }
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.contains(where: \.isWhitespace),
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil else { return nil }
+        return url
     }
 
     var previewTitle: String {
+        if let linkTitle, !linkTitle.isEmpty { return linkTitle }
         switch content {
         case .text(let s):
             let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)

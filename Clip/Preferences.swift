@@ -20,6 +20,8 @@ final class Preferences: ObservableObject {
         static let hotKeyCode = "hotKeyCode"
         static let hotKeyModifiers = "hotKeyModifiers"
         static let maxItemLength = "maxItemLength"
+        static let fetchLinkPreviews = "fetchLinkPreviews"
+        static let hasOnboarded = "hasOnboarded"
     }
 
     private init() {
@@ -33,7 +35,20 @@ final class Preferences: ObservableObject {
             Keys.hotKeyCode: 9,
             Keys.hotKeyModifiers: cmdKey | shiftKey,
             Keys.maxItemLength: 0, // 0 = unlimited
+            // The single network-touching feature; privacy-first means opt-in.
+            Keys.fetchLinkPreviews: false,
+            Keys.hasOnboarded: false,
         ])
+    }
+
+    var fetchLinkPreviews: Bool {
+        get { defaults.bool(forKey: Keys.fetchLinkPreviews) }
+        set { defaults.set(newValue, forKey: Keys.fetchLinkPreviews); objectWillChange.send() }
+    }
+
+    var hasOnboarded: Bool {
+        get { defaults.bool(forKey: Keys.hasOnboarded) }
+        set { defaults.set(newValue, forKey: Keys.hasOnboarded); objectWillChange.send() }
     }
 
     var historyLimit: Int {

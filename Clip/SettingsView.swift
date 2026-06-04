@@ -60,6 +60,14 @@ private struct GeneralSettings: View {
                 get: { prefs.captureImages },
                 set: { prefs.captureImages = $0 }
             ))
+
+            Toggle("Fetch link previews", isOn: Binding(
+                get: { prefs.fetchLinkPreviews },
+                set: { prefs.fetchLinkPreviews = $0 }
+            ))
+            Text("Shows page titles and site icons for copied links. This is Clip's only feature that touches the network — it fetches each link's own page, nothing else. Off by default.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
         .padding(.top, 8)

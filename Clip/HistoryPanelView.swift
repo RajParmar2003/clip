@@ -106,6 +106,14 @@ struct HistoryPanelView: View {
             Text("⌘P pin")
             Spacer()
             Text("\(filtered.count) items")
+            Button {
+                controller.hide()
+                NotificationCenter.default.post(name: .clipOpenMainWindow, object: nil)
+            } label: {
+                Image(systemName: "macwindow")
+            }
+            .buttonStyle(.borderless)
+            .help("Open Clip Window")
         }
         .font(.caption)
         .foregroundStyle(.tertiary)

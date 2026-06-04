@@ -53,10 +53,16 @@ enum SettingsOpener {
     }
 }
 
+extension Notification.Name {
+    static let clipOpenMainWindow = Notification.Name("clipOpenMainWindow")
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let clipboardStore = ClipboardStore()
     private var statusItem: NSStatusItem!
     private var panelController: PanelController!
+    private var mainWindowController: MainWindowController!
+    private let onboarding = OnboardingController()
     private var hotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -72,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         panelController = PanelController(store: clipboardStore)
+        mainWindowController = MainWindowController(store: clipboardStore)
         clipboardStore.startMonitoring()
         registerHotKey()
 
@@ -79,6 +86,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(hotKeyPreferenceChanged),
             name: .clipHotKeyChanged, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(openMainWindow),
+            name: .clipOpenMainWindow, object: nil
+        )
+
+        onboarding.showIfNeeded()
+    }
+
+    @objc func openMainWindow() {
+        panelController.hide()
+        mainWindowController.show()
     }
 
     func registerHotKey() {
@@ -116,7 +134,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showContextMenu() {
         let menu = NSMenu()
         menu.addItem(withTitle: "Show Clipboard History", action: #selector(menuShowPanel), keyEquivalent: "")
+        menu.addItem(withTitle: "Open Clip Window", action: #selector(openMainWindow), keyEquivalent: "o")
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Welcome Tour", action: #selector(menuShowOnboarding), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(menuOpenSettings), keyEquivalent: ",")
         menu.addItem(withTitle: "Clear History", action: #selector(menuClearHistory), keyEquivalent: "")
         menu.addItem(.separator())
@@ -128,6 +148,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func menuShowPanel() { panelController.show() }
+
+    @objc private func menuShowOnboarding() { onboarding.show() }
 
     @objc private func menuOpenSettings() {
         SettingsOpener.open()

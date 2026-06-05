@@ -154,6 +154,14 @@ private struct PrivacySettings: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            Toggle("Recognize text in images", isOn: Binding(
+                get: { prefs.ocrImages },
+                set: { prefs.ocrImages = $0 }
+            ))
+            Text("Makes screenshots searchable by the text inside them. Runs entirely on this Mac (Apple Vision) — nothing leaves your device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Section("Ignored apps") {
                 if prefs.ignoredApps.isEmpty {
                     Text("Copies from apps in this list are never recorded.")

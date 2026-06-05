@@ -177,7 +177,7 @@ struct MainWindowView: View {
                         categories: store.categories,
                         itemCategory: store.categories.first { $0.id == item.categoryID },
                         isMultiSelected: selectedIDs.contains(item.id),
-                        isQueued: controller.queue.contains(item),
+                        isQueued: queue.contains(item),
                         onPaste: { controller.select(item, plainTextOnly: false) },
                         onPastePlain: { controller.select(item, plainTextOnly: true) },
                         onPasteTransformed: { controller.selectTransformed(item, transform: $0) },
@@ -187,10 +187,10 @@ struct MainWindowView: View {
                         onEdit: { editingItem = item },
                         onAssign: { store.assign(item, to: $0) },
                         onToggleQueue: {
-                            if controller.queue.contains(item) {
-                                controller.queue.remove(item)
+                            if queue.contains(item) {
+                                queue.remove(item)
                             } else {
-                                controller.queue.enqueue(item)
+                                queue.enqueue(item)
                             }
                         },
                         onToggleMultiSelect: {

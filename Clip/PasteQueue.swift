@@ -41,6 +41,12 @@ final class PasteQueue: ObservableObject {
             return
         }
         let item = queued.removeFirst()
+        // A queued disk-backed image may have been deleted since queueing;
+        // skip it rather than pasting an empty pasteboard.
+        if case .image = item.content, store.engine.loadFullImage(for: item) == nil {
+            pasteNext()
+            return
+        }
         store.copyToPasteboard(item, plainTextOnly: false)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             Paster.sendCmdV()

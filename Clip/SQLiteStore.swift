@@ -436,6 +436,9 @@ final class SQLiteStore {
 
     func compact() {
         exec("VACUUM")
+        // VACUUM may renumber implicit rowids; rebuild the external-content
+        // FTS index so search never desyncs from the items table.
+        exec("INSERT INTO items_fts(items_fts) VALUES('rebuild')")
     }
 
     // MARK: - Reads

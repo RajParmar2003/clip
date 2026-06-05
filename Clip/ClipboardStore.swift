@@ -266,6 +266,8 @@ final class ClipboardStore: ObservableObject {
                 LinkMetadataFetcher.shared.enrich(stored, in: self)
                 self.runOCRIfNeeded(on: stored)
             }
+            // Re-copying trashed content rescues it; keep the badge accurate.
+            self.trashCount = self.engine.trashCount()
         }
     }
 

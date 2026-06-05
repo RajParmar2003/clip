@@ -33,35 +33,94 @@ enum ClipFilter: String, CaseIterable, Identifiable {
     }
 }
 
+enum SidebarSelection: Hashable {
+    case filter(ClipFilter)
+    case category(UUID)
+}
+
 struct MainWindowView: View {
     @ObservedObject var store: ClipboardStore
     let controller: MainWindowController
 
     @State private var query = ""
-    @State private var filter: ClipFilter = .all
+    @State private var selection: SidebarSelection = .filter(.all)
     @State private var showClearConfirm = false
+    @State private var newCategorySheet = false
+    @State private var editingItem: ClipboardItem?
+    @State private var selectedIDs = Set<UUID>()
+    @State private var multiSeparator = "\n"
+
+    private var currentCategory: ClipCategory? {
+        if case .category(let id) = selection {
+            return store.categories.first { $0.id == id }
+        }
+        return nil
+    }
 
     private var filtered: [ClipboardItem] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if q.isEmpty {
-            let base = store.items
-                .filter { filter.matches($0) }
-                .sorted { lhs, rhs in
-                    if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
-                    return lhs.copiedAt > rhs.copiedAt
-                }
-            return Array(base.prefix(500))
+        switch selection {
+        case .category(let id):
+            guard let category = store.categories.first(where: { $0.id == id }) else { return [] }
+            let base = store.items(in: category)
+            guard !q.isEmpty else { return base }
+            return store.search(q).filter { $0.categoryID == category.id }
+        case .filter(let filter):
+            if q.isEmpty {
+                let base = store.items
+                    .filter { filter.matches($0) }
+                    .sorted { lhs, rhs in
+                        if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
+                        return lhs.copiedAt > rhs.copiedAt
+                    }
+                return Array(base.prefix(500))
+            }
+            return store.search(q).filter { filter.matches($0) }
         }
-        // Full-history search via the engine, then apply the sidebar filter.
-        return store.search(q).filter { filter.matches($0) }
     }
 
     var body: some View {
         NavigationSplitView {
-            List(ClipFilter.allCases, selection: $filter) { f in
-                Label(f.rawValue, systemImage: f.systemImage).tag(f)
+            List(selection: $selection) {
+                Section {
+                    ForEach(ClipFilter.allCases) { f in
+                        Label(f.rawValue, systemImage: f.systemImage)
+                            .tag(SidebarSelection.filter(f))
+                    }
+                }
+                Section("Categories") {
+                    ForEach(store.categories) { category in
+                        HStack(spacing: 8) {
+                            Circle().fill(category.color).frame(width: 9, height: 9)
+                            Text(category.name)
+                            if category.isCollecting {
+                                Image(systemName: "record.circle")
+                                    .font(.caption2)
+                                    .foregroundStyle(.red)
+                                    .help("Collecting: new copies are filed here")
+                            }
+                        }
+                        .tag(SidebarSelection.category(category.id))
+                        .contextMenu {
+                            Button(category.isCollecting ? "Stop Collecting" : "Start Collecting") {
+                                store.setCollecting(category, enabled: !category.isCollecting)
+                            }
+                            Divider()
+                            Button("Delete Category", role: .destructive) {
+                                if selection == .category(category.id) { selection = .filter(.all) }
+                                store.deleteCategory(category)
+                            }
+                        }
+                    }
+                    Button {
+                        newCategorySheet = true
+                    } label: {
+                        Label("New Category…", systemImage: "plus.circle")
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
         } detail: {
             VStack(spacing: 0) {
                 searchBar
@@ -72,16 +131,37 @@ struct MainWindowView: View {
                     list
                 }
                 Divider()
+                if selectedIDs.count > 1 {
+                    multiSelectBar
+                    Divider()
+                }
                 footer
             }
         }
         .frame(minWidth: 560, minHeight: 360)
+        .sheet(isPresented: $newCategorySheet) {
+            NewCategorySheet { name, colorHex in
+                store.addCategory(name: name, colorHex: colorHex)
+            }
+        }
+        .sheet(item: $editingItem) { item in
+            QuickEditSheet(item: item) { newText in
+                store.updateText(item, to: newText)
+            }
+        }
+        .onChange(of: selection) { _ in selectedIDs.removeAll() }
+    }
+
+    private var searchTitle: String {
+        if let category = currentCategory { return category.name.lowercased() }
+        if case .filter(let f) = selection { return f.rawValue.lowercased() }
+        return "history"
     }
 
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search \(filter.rawValue.lowercased())…", text: $query)
+            TextField("Search \(searchTitle)…", text: $query)
                 .textFieldStyle(.plain)
         }
         .padding(10)
@@ -93,11 +173,23 @@ struct MainWindowView: View {
                 ForEach(filtered) { item in
                     MainItemRow(
                         item: item,
+                        categories: store.categories,
+                        itemCategory: store.categories.first { $0.id == item.categoryID },
+                        isMultiSelected: selectedIDs.contains(item.id),
                         onPaste: { controller.select(item, plainTextOnly: false) },
                         onPastePlain: { controller.select(item, plainTextOnly: true) },
                         onCopy: { controller.copyOnly(item) },
                         onPin: { store.togglePin(item) },
-                        onDelete: { store.delete(item) }
+                        onDelete: { store.delete(item) },
+                        onEdit: { editingItem = item },
+                        onAssign: { store.assign(item, to: $0) },
+                        onToggleMultiSelect: {
+                            if selectedIDs.contains(item.id) {
+                                selectedIDs.remove(item.id)
+                            } else {
+                                selectedIDs.insert(item.id)
+                            }
+                        }
                     )
                 }
             }
@@ -105,18 +197,58 @@ struct MainWindowView: View {
         }
     }
 
+    private var multiSelectBar: some View {
+        HStack(spacing: 10) {
+            Text("\(selectedIDs.count) selected")
+                .font(.caption)
+            Picker("Join with", selection: $multiSeparator) {
+                Text("New line").tag("\n")
+                Text("Space").tag(" ")
+                Text("Tab").tag("\t")
+                Text("Comma").tag(", ")
+            }
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .frame(maxWidth: 160)
+            Button("Paste \(selectedIDs.count) Items") { pasteSelectedItems() }
+                .controlSize(.small)
+                .keyboardShortcut(.defaultAction)
+            Spacer()
+            Button("Clear Selection") { selectedIDs.removeAll() }
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    /// Joins the selected text items (in list order) and pastes as one.
+    private func pasteSelectedItems() {
+        let chosen = filtered.filter { selectedIDs.contains($0.id) }
+        let textParts: [String] = chosen.compactMap {
+            if case .text(let s) = $0.content { return s }
+            return nil
+        }
+        guard !textParts.isEmpty else { return }
+        var combined = ClipboardItem(content: .text(textParts.joined(separator: multiSeparator)))
+        combined.restoreIdentity(id: UUID(), copiedAt: Date(), isPinned: false)
+        selectedIDs.removeAll()
+        controller.select(combined, plainTextOnly: false)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 8) {
             Spacer()
-            Image(systemName: filter.systemImage)
+            Image(systemName: currentCategory != nil ? "folder" : "clock")
                 .font(.system(size: 32))
                 .foregroundStyle(.tertiary)
             Text(query.isEmpty ? "Nothing here yet" : "No matches")
                 .foregroundStyle(.secondary)
-            if filter == .all && query.isEmpty {
-                Text("Copy something anywhere — it will appear here.")
+            if let category = currentCategory, query.isEmpty {
+                Text("Right-click an item and choose \"Add to \(category.name)\" — or Start Collecting to file every new copy here automatically.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
             }
             Spacer()
         }
@@ -147,13 +279,24 @@ struct MainWindowView: View {
 
 private struct MainItemRow: View {
     let item: ClipboardItem
+    let categories: [ClipCategory]
+    let itemCategory: ClipCategory?
+    let isMultiSelected: Bool
     let onPaste: () -> Void
     let onPastePlain: () -> Void
     let onCopy: () -> Void
     let onPin: () -> Void
     let onDelete: () -> Void
+    let onEdit: () -> Void
+    let onAssign: (ClipCategory?) -> Void
+    let onToggleMultiSelect: () -> Void
 
     @State private var hovering = false
+
+    private var isEditableText: Bool {
+        if case .text = item.content { return true }
+        return false
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -164,6 +307,12 @@ private struct MainItemRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 HStack(spacing: 6) {
+                    if let category = itemCategory {
+                        HStack(spacing: 3) {
+                            Circle().fill(category.color).frame(width: 6, height: 6)
+                            Text(category.name)
+                        }
+                    }
                     if let app = item.sourceAppName { Text(app) }
                     Text(item.copiedAt, style: .relative)
                     if let url = item.asURL, item.linkTitle != nil {
@@ -184,8 +333,12 @@ private struct MainItemRow: View {
                         Button("Paste") { onPaste() }
                         Button("Paste as Plain Text") { onPastePlain() }
                         Button("Copy") { onCopy() }
+                        if isEditableText {
+                            Button("Edit…") { onEdit() }
+                        }
                         Divider()
                         Button(item.isPinned ? "Unpin" : "Pin") { onPin() }
+                        categoryMenu
                         if let url = item.asURL {
                             Button("Open in Browser") { NSWorkspace.shared.open(url) }
                         }
@@ -208,17 +361,62 @@ private struct MainItemRow: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(hovering ? Color.primary.opacity(0.06) : Color.clear)
+                .fill(isMultiSelected ? Color.accentColor.opacity(0.18)
+                      : hovering ? Color.primary.opacity(0.06) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(isMultiSelected ? Color.accentColor.opacity(0.6) : Color.clear)
         )
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture {
-            NSEvent.modifierFlags.contains(.option) ? onPastePlain() : onPaste()
+            let mods = NSEvent.modifierFlags
+            if mods.contains(.command) {
+                onToggleMultiSelect()
+            } else if mods.contains(.option) {
+                onPastePlain()
+            } else {
+                onPaste()
+            }
         }
-        .help("Click to paste into the app you were using")
+        .contextMenu {
+            Button("Paste") { onPaste() }
+            Button("Paste as Plain Text") { onPastePlain() }
+            if isEditableText { Button("Edit…") { onEdit() } }
+            Divider()
+            Button(item.isPinned ? "Unpin" : "Pin") { onPin() }
+            categoryMenu
+            Divider()
+            Button("Delete", role: .destructive) { onDelete() }
+        }
+        .help("Click to paste · Command-click to select multiple")
     }
 
-    private func rowButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+    @ViewBuilder
+    private var categoryMenu: some View {
+        if !categories.isEmpty {
+            Menu("Add to Category") {
+                ForEach(categories) { category in
+                    Button {
+                        onAssign(category)
+                    } label: {
+                        if category.id == item.categoryID {
+                            Label(category.name, systemImage: "checkmark")
+                        } else {
+                            Text(category.name)
+                        }
+                    }
+                }
+                if item.categoryID != nil {
+                    Divider()
+                    Button("Remove from Category") { onAssign(nil) }
+                }
+            }
+        }
+    }
+
+    fileprivate func rowButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
         }
@@ -253,5 +451,89 @@ private struct MainItemRow: View {
                 Image(systemName: "doc").foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: - Sheets
+
+private struct NewCategorySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var colorHex = ClipCategory.palette[0]
+    let onCreate: (String, String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("New Category").font(.headline)
+            TextField("Name (e.g. Work, Links, Receipts)", text: $name)
+                .textFieldStyle(.roundedBorder)
+            HStack(spacing: 8) {
+                ForEach(ClipCategory.palette, id: \.self) { hex in
+                    Circle()
+                        .fill(Color(hex: hex) ?? .orange)
+                        .frame(width: 22, height: 22)
+                        .overlay(
+                            Circle().strokeBorder(Color.primary.opacity(colorHex == hex ? 0.8 : 0), lineWidth: 2)
+                        )
+                        .onTapGesture { colorHex = hex }
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Create") {
+                    let trimmed = name.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty else { return }
+                    onCreate(trimmed, colorHex)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 340)
+    }
+}
+
+private struct QuickEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let item: ClipboardItem
+    let onSave: (String) -> Void
+    @State private var text: String
+
+    init(item: ClipboardItem, onSave: @escaping (String) -> Void) {
+        self.item = item
+        self.onSave = onSave
+        if case .text(let s) = item.content {
+            _text = State(initialValue: s)
+        } else {
+            _text = State(initialValue: "")
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Edit Clip").font(.headline)
+            TextEditor(text: $text)
+                .font(.body.monospaced())
+                .frame(minWidth: 420, minHeight: 220)
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.3)))
+            Text("Saving replaces the clip's text (formatting is removed).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    onSave(text)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
     }
 }

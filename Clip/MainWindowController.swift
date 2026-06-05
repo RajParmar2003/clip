@@ -6,12 +6,25 @@ import SwiftUI
 final class MainWindowController: NSObject, NSWindowDelegate, ObservableObject {
     private var window: NSWindow?
     private let store: ClipboardStore
+    let queue: PasteQueue
     /// App that was frontmost before this window took focus — the paste target.
     private(set) var previousApp: NSRunningApplication?
 
-    init(store: ClipboardStore) {
+    init(store: ClipboardStore, queue: PasteQueue) {
         self.store = store
+        self.queue = queue
         super.init()
+    }
+
+    /// Paste with a text transform applied on the fly.
+    func selectTransformed(_ item: ClipboardItem, transform: TextTransform) {
+        store.copyTransformed(item, transform: transform)
+        hide()
+        guard Preferences.shared.pasteDirectly else { return }
+        previousApp?.activate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Paster.sendCmdV()
+        }
     }
 
     func show() {
@@ -32,7 +45,7 @@ final class MainWindowController: NSObject, NSWindowDelegate, ObservableObject {
             w.setFrameAutosaveName("ClipMainWindow")
             w.delegate = self
             w.contentView = NSHostingView(
-                rootView: MainWindowView(store: store, controller: self)
+                rootView: MainWindowView(store: store, controller: self, queue: queue)
             )
             window = w
         }

@@ -7,16 +7,29 @@ import SwiftUI
 final class PanelController: NSObject, NSWindowDelegate, ObservableObject {
     private var panel: NSPanel!
     private let store: ClipboardStore
+    let queue: PasteQueue
     /// The app that was frontmost before the panel opened — paste target.
     private(set) var previousApp: NSRunningApplication?
     /// Bumped on every show() so the SwiftUI view resets search/selection/focus
     /// (onAppear only fires once because orderOut doesn't tear the view down).
     @Published private(set) var showGeneration = 0
 
-    init(store: ClipboardStore) {
+    init(store: ClipboardStore, queue: PasteQueue) {
         self.store = store
+        self.queue = queue
         super.init()
         buildPanel()
+    }
+
+    /// Paste with a text transform applied on the fly.
+    func selectTransformed(_ item: ClipboardItem, transform: TextTransform) {
+        store.copyTransformed(item, transform: transform)
+        hide()
+        guard Preferences.shared.pasteDirectly else { return }
+        previousApp?.activate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Paster.sendCmdV()
+        }
     }
 
     private func buildPanel() {
@@ -40,7 +53,7 @@ final class PanelController: NSObject, NSWindowDelegate, ObservableObject {
         panel.hasShadow = true
         panel.delegate = self
 
-        let root = HistoryPanelView(store: store, controller: self)
+        let root = HistoryPanelView(store: store, controller: self, queue: queue)
         let hosting = NSHostingView(rootView: root)
         panel.contentView = hosting
     }

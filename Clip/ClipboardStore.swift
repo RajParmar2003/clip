@@ -9,9 +9,17 @@ import os.log
 /// `items` is the *working set* (all pinned + the most recent unpinned items)
 /// — enough for instant browsing. Search goes through `search(_:)`, which
 /// queries the full, unlimited history in the database.
+/// What's on the system clipboard right now — for the inspector strip.
+struct ClipboardSummary: Equatable {
+    var systemImage: String
+    var preview: String
+    var detail: String
+}
+
 final class ClipboardStore: ObservableObject {
     @Published private(set) var items: [ClipboardItem] = []
     @Published private(set) var categories: [ClipCategory] = []
+    @Published private(set) var currentClipboard: ClipboardSummary?
 
     let engine = SQLiteStore()
     static let workingSetLimit = 1_000
@@ -126,6 +134,7 @@ final class ClipboardStore: ObservableObject {
         // standard approach (Maccy, Pastebot, Raycast all do this). 200ms is responsive
         // yet negligible CPU since we only compare an Int.
         scheduleTimer()
+        currentClipboard = summarize(NSPasteboard.general)
 
         // Reliability hardening: timers can be stale around sleep/wake, and the
         // category-wide complaint against clipboard managers is silently missed
@@ -161,9 +170,57 @@ final class ClipboardStore: ObservableObject {
         timer = nil
     }
 
+    private func summarize(_ pb: NSPasteboard) -> ClipboardSummary? {
+        if let s = pb.string(forType: .string), !s.isEmpty {
+            let line = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
+            return ClipboardSummary(systemImage: "text.alignleft",
+                                    preview: String(line.prefix(70)),
+                                    detail: "\(s.count) characters")
+        }
+        if let urls = pb.readObjects(forClasses: [NSURL.self],
+                                     options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            let name = (urls[0].path as NSString).lastPathComponent
+            return ClipboardSummary(systemImage: "doc",
+                                    preview: urls.count == 1 ? name : "\(urls.count) files",
+                                    detail: "file\(urls.count == 1 ? "" : "s")")
+        }
+        if let data = pb.data(forType: .png) ?? pb.data(forType: .tiff) {
+            return ClipboardSummary(systemImage: "photo",
+                                    preview: "Image",
+                                    detail: ByteCountFormatter.string(fromByteCount: Int64(data.count),
+                                                                      countStyle: .file))
+        }
+        if (pb.types ?? []).isEmpty { return nil }
+        return ClipboardSummary(systemImage: "questionmark.square.dashed",
+                                preview: "Other content", detail: "")
+    }
+
+    /// Empties the system clipboard (inspector's Clear action).
+    func clearSystemClipboard() {
+        ignoreNextChange = true
+        NSPasteboard.general.clearContents()
+        currentClipboard = nil
+    }
+
+    /// Screenshot watcher entry point: file lands in history (dedup-aware via
+    /// content hash, OCR runs automatically) and optionally onto the clipboard.
+    func addScreenshot(png: Data) {
+        let item = ClipboardItem(content: .image(png), sourceAppName: "Screenshot")
+        add(item)
+        if Preferences.shared.screenshotAutoCopy {
+            ignoreNextChange = true
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setData(png, forType: .png)
+            currentClipboard = summarize(pb)
+        }
+    }
+
     private func checkPasteboard() {
         let pb = NSPasteboard.general
         guard pb.changeCount != lastChangeCount else { return }
+        currentClipboard = summarize(pb)
         if pb.changeCount > lastChangeCount + 1 {
             // More than one copy happened inside a poll window; we can only see
             // the latest. Log it so misses are measurable, not mysterious.

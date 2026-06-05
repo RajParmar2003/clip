@@ -136,6 +136,9 @@ struct MainWindowView: View {
         } detail: {
             VStack(spacing: 0) {
                 searchBar
+                if let now = store.currentClipboard {
+                    ClipboardNowStrip(summary: now) { store.clearSystemClipboard() }
+                }
                 Divider()
                 if filtered.isEmpty {
                     emptyState

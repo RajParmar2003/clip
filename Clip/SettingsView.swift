@@ -59,6 +59,24 @@ private struct GeneralSettings: View {
             Text("Shows page titles and site icons for copied links. This is Clip's only feature that touches the network — it fetches each link's own page, nothing else. Off by default.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Toggle("Capture screenshots I take", isOn: Binding(
+                get: { prefs.captureScreenshots },
+                set: { prefs.captureScreenshots = $0 }
+            ))
+            Text("Every screenshot (Shift+Command+3/4/5) lands in your history automatically — no copying needed. macOS will ask once for access to the folder where screenshots are saved.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if prefs.captureScreenshots {
+                Toggle("Also put screenshots on the clipboard", isOn: Binding(
+                    get: { prefs.screenshotAutoCopy },
+                    set: { prefs.screenshotAutoCopy = $0 }
+                ))
+                Text("Take a screenshot, press paste — it's already there.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding(.top, 8)

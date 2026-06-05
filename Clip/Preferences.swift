@@ -5,6 +5,7 @@ import ServiceManagement
 
 extension Notification.Name {
     static let clipHotKeyChanged = Notification.Name("clipHotKeyChanged")
+    static let clipScreenshotPrefChanged = Notification.Name("clipScreenshotPrefChanged")
 }
 
 final class Preferences: ObservableObject {
@@ -25,6 +26,8 @@ final class Preferences: ObservableObject {
         static let retentionDays = "retentionDays"
         static let imageRetentionDays = "imageRetentionDays"
         static let ocrImages = "ocrImages"
+        static let captureScreenshots = "captureScreenshots"
+        static let screenshotAutoCopy = "screenshotAutoCopy"
     }
 
     private init() {
@@ -46,7 +49,25 @@ final class Preferences: ObservableObject {
             Keys.hasOnboarded: false,
             // Vision OCR is fully on-device — no privacy cost, on by default.
             Keys.ocrImages: true,
+            // Reading the screenshots folder needs a one-time macOS consent,
+            // so this ships off until the user turns it on knowingly.
+            Keys.captureScreenshots: false,
+            Keys.screenshotAutoCopy: false,
         ])
+    }
+
+    var captureScreenshots: Bool {
+        get { defaults.bool(forKey: Keys.captureScreenshots) }
+        set {
+            defaults.set(newValue, forKey: Keys.captureScreenshots)
+            objectWillChange.send()
+            NotificationCenter.default.post(name: .clipScreenshotPrefChanged, object: nil)
+        }
+    }
+
+    var screenshotAutoCopy: Bool {
+        get { defaults.bool(forKey: Keys.screenshotAutoCopy) }
+        set { defaults.set(newValue, forKey: Keys.screenshotAutoCopy); objectWillChange.send() }
     }
 
     var ocrImages: Bool {

@@ -429,7 +429,7 @@ final class SQLiteStore {
                 else { sqlite3_bind_null(stmt, idx) }
             case .blobOpt(let v):
                 if let v {
-                    v.withUnsafeBytes { sqlite3_bind_blob(stmt, idx, $0.baseAddress, Int32(v.count), SQLITE_TRANSIENT) }
+                    _ = v.withUnsafeBytes { sqlite3_bind_blob(stmt, idx, $0.baseAddress, Int32(v.count), SQLITE_TRANSIENT) }
                 } else { sqlite3_bind_null(stmt, idx) }
             }
         }

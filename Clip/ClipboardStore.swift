@@ -48,6 +48,7 @@ final class ClipboardStore: ObservableObject {
         engine.applyRetention(maxItems: p.historyLimit,
                               maxAgeDays: p.retentionDays,
                               imageMaxAgeDays: p.imageRetentionDays)
+        refreshWorkingSet()
         // Re-run daily so age-based expiry actually expires things.
         if retentionTimer == nil {
             retentionTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in

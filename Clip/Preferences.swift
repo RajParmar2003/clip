@@ -22,11 +22,16 @@ final class Preferences: ObservableObject {
         static let maxItemLength = "maxItemLength"
         static let fetchLinkPreviews = "fetchLinkPreviews"
         static let hasOnboarded = "hasOnboarded"
+        static let retentionDays = "retentionDays"
+        static let imageRetentionDays = "imageRetentionDays"
     }
 
     private init() {
         defaults.register(defaults: [
-            Keys.historyLimit: 500,
+            // 0 = unlimited. The disk already paid for it.
+            Keys.historyLimit: 0,
+            Keys.retentionDays: 0,
+            Keys.imageRetentionDays: 0,
             Keys.pasteDirectly: true,
             Keys.ignoreConcealed: true,
             Keys.captureImages: true,
@@ -49,6 +54,18 @@ final class Preferences: ObservableObject {
     var hasOnboarded: Bool {
         get { defaults.bool(forKey: Keys.hasOnboarded) }
         set { defaults.set(newValue, forKey: Keys.hasOnboarded); objectWillChange.send() }
+    }
+
+    /// 0 = keep forever.
+    var retentionDays: Int {
+        get { defaults.integer(forKey: Keys.retentionDays) }
+        set { defaults.set(newValue, forKey: Keys.retentionDays); objectWillChange.send() }
+    }
+
+    /// 0 = keep forever. Lets users expire bulky images sooner than text.
+    var imageRetentionDays: Int {
+        get { defaults.integer(forKey: Keys.imageRetentionDays) }
+        set { defaults.set(newValue, forKey: Keys.imageRetentionDays); objectWillChange.send() }
     }
 
     var historyLimit: Int {

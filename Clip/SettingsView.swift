@@ -10,6 +10,8 @@ struct SettingsView: View {
         TabView {
             GeneralSettings(prefs: prefs)
                 .tabItem { Label("General", systemImage: "gear") }
+            StorageSettings(prefs: prefs, store: store)
+                .tabItem { Label("Storage", systemImage: "internaldrive") }
             PrivacySettings(prefs: prefs, store: store)
                 .tabItem { Label("Privacy", systemImage: "lock") }
         }
@@ -45,17 +47,6 @@ private struct GeneralSettings: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Picker("History size", selection: Binding(
-                get: { prefs.historyLimit },
-                set: { prefs.historyLimit = $0 }
-            )) {
-                Text("100").tag(100)
-                Text("250").tag(250)
-                Text("500").tag(500)
-                Text("1,000").tag(1000)
-                Text("5,000").tag(5000)
-            }
-
             Toggle("Capture images", isOn: Binding(
                 get: { prefs.captureImages },
                 set: { prefs.captureImages = $0 }
@@ -71,6 +62,78 @@ private struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .padding(.top, 8)
+    }
+}
+
+// MARK: - Storage
+
+private struct StorageSettings: View {
+    @ObservedObject var prefs: Preferences
+    let store: ClipboardStore
+    @State private var stats: SQLiteStore.Stats?
+    @State private var compacting = false
+
+    var body: some View {
+        Form {
+            Section("Usage") {
+                LabeledContent("Items", value: statsText { "\($0.totalItems.formatted()) (\($0.pinnedItems) pinned)" })
+                LabeledContent("Database", value: statsText { byteString($0.dbBytes) })
+                LabeledContent("Image files", value: statsText { byteString($0.imageFileBytes) })
+                Button(compacting ? "Compacting…" : "Compact Storage") {
+                    compacting = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        store.engine.compact()
+                        stats = store.engine.stats()
+                        compacting = false
+                    }
+                }
+                .disabled(compacting)
+            }
+
+            Section("Retention") {
+                Picker("Keep items", selection: Binding(
+                    get: { prefs.historyLimit },
+                    set: { prefs.historyLimit = $0; store.applyRetention(); stats = store.engine.stats() }
+                )) {
+                    Text("Unlimited").tag(0)
+                    Text("Last 1,000").tag(1000)
+                    Text("Last 10,000").tag(10_000)
+                    Text("Last 100,000").tag(100_000)
+                }
+                Picker("Expire after", selection: Binding(
+                    get: { prefs.retentionDays },
+                    set: { prefs.retentionDays = $0; store.applyRetention(); stats = store.engine.stats() }
+                )) {
+                    Text("Never").tag(0)
+                    Text("30 days").tag(30)
+                    Text("90 days").tag(90)
+                    Text("1 year").tag(365)
+                }
+                Picker("Expire images after", selection: Binding(
+                    get: { prefs.imageRetentionDays },
+                    set: { prefs.imageRetentionDays = $0; store.applyRetention(); stats = store.engine.stats() }
+                )) {
+                    Text("Never").tag(0)
+                    Text("7 days").tag(7)
+                    Text("30 days").tag(30)
+                    Text("90 days").tag(90)
+                }
+                Text("Pinned items are never expired, by any rule.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding(.top, 8)
+        .onAppear { stats = store.engine.stats() }
+    }
+
+    private func statsText(_ transform: (SQLiteStore.Stats) -> String) -> String {
+        stats.map(transform) ?? "…"
+    }
+
+    private func byteString(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
 

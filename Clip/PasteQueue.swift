@@ -18,6 +18,7 @@ final class PasteQueue: ObservableObject {
     func enqueue(_ item: ClipboardItem) {
         guard !queued.contains(where: { $0.id == item.id }) else { return }
         queued.append(item)
+        NSLog("CLIP-TRACE: enqueued '\(item.previewTitle.prefix(20))', queue count = \(queued.count)")
     }
 
     func remove(_ item: ClipboardItem) {
@@ -36,11 +37,13 @@ final class PasteQueue: ObservableObject {
     /// global hotkey, so the target app already has focus — no activation
     /// dance needed, just load the pasteboard and synthesize Command+V.
     func pasteNext() {
+        NSLog("CLIP-TRACE: pasteNext, store = \(store != nil), queue count = \(queued.count)")
         guard let store, !queued.isEmpty else {
             NSSound.beep()
             return
         }
         let item = queued.removeFirst()
+        NSLog("CLIP-TRACE: pasting '\(item.previewTitle.prefix(20))'")
         // A queued disk-backed image may have been deleted since queueing;
         // skip it rather than pasting an empty pasteboard.
         if case .image = item.content, store.engine.loadFullImage(for: item) == nil {

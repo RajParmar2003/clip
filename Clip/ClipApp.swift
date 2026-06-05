@@ -100,8 +100,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Control+Command+V pastes the next queued item (kVK_ANSI_V = 9).
         queueHotKey = HotKey(keyCode: 9, modifiers: UInt32(cmdKey | controlKey)) { [weak self] in
+            NSLog("CLIP-TRACE: queue hotkey fired, queue count = \(self?.pasteQueue.count ?? -1)")
             self?.pasteQueue.pasteNext()
         }
+        NSLog("CLIP-TRACE: queue hotkey registered = \(queueHotKey != nil)")
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(hotKeyPreferenceChanged),

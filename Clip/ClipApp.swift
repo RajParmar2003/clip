@@ -69,6 +69,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var queueHotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Single-instance guard: two Clips mean split hotkeys, split history
+        // views, and chaos. If another instance is already running, defer to
+        // it and exit immediately.
+        if let bundleID = Bundle.main.bundleIdentifier {
+            let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+                .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+            if let existing = others.first {
+                existing.activate()
+                NSApp.terminate(nil)
+                return
+            }
+        }
+
         // Menu-bar-only app: no Dock icon.
         NSApp.setActivationPolicy(.accessory)
 

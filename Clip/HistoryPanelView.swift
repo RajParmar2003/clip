@@ -36,6 +36,9 @@ struct HistoryPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchBar
+            if let now = store.currentClipboard {
+                ClipboardNowStrip(summary: now) { store.clearSystemClipboard() }
+            }
             Divider()
             if filtered.isEmpty {
                 emptyState
@@ -225,6 +228,48 @@ struct HistoryPanelView: View {
         selectedIndex = 0
         // Slight delay so focus lands after the panel becomes key.
         DispatchQueue.main.async { searchFocused = true }
+    }
+}
+
+// MARK: - Current clipboard strip
+
+/// "What will ⌘V paste right now?" — the live answer, always visible.
+struct ClipboardNowStrip: View {
+    let summary: ClipboardSummary
+    let onClear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Now:")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+            Image(systemName: summary.systemImage)
+                .font(.caption)
+                .foregroundStyle(.blue)
+            Text(summary.preview)
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if !summary.detail.isEmpty {
+                Text(summary.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 4)
+            Button {
+                onClear()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.tertiary)
+            .help("Clear the clipboard")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background(Color.primary.opacity(0.04))
+        .help("This is what's on your clipboard right now")
     }
 }
 

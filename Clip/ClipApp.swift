@@ -67,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let onboarding = OnboardingController()
     private var hotKey: HotKey?
     private var queueHotKey: HotKey?
+    private var screenshotWatcher: ScreenshotWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Single-instance guard: two Clips mean split hotkeys, split history
@@ -112,7 +113,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: .clipOpenMainWindow, object: nil
         )
 
+        screenshotWatcher = ScreenshotWatcher(store: clipboardStore)
+        syncScreenshotWatcher()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(syncScreenshotWatcher),
+            name: .clipScreenshotPrefChanged, object: nil
+        )
+
         onboarding.showIfNeeded()
+    }
+
+    @objc private func syncScreenshotWatcher() {
+        if Preferences.shared.captureScreenshots {
+            screenshotWatcher?.start()
+        } else {
+            screenshotWatcher?.stop()
+        }
     }
 
     @objc func openMainWindow() {

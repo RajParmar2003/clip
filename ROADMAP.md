@@ -64,14 +64,14 @@ Research: these are the features that remain genuinely power-exclusive across th
 5b. **Current-clipboard inspector** (requested): a pinned strip at the top of the popup and window showing exactly what's on the system clipboard *right now* — type, preview, size, source app — so you always know what ⌘V is about to paste before you paste it. Includes a "clear clipboard" action.
 6. **Scripting surface**: a small CLI (`clip list`, `clip get N`, `clip search`) and Shortcuts.app actions. Power users on HN consistently reward scriptability with loyalty.
 
-## Phase 5 — Reach (v4, the honest trade-offs)
+## Phase 6 — Reach (the honest trade-offs)
 
 1. **Optional iCloud sync** — off by default, loudly labeled, favorites-only mode available (the CopyLess model), full-history mode for those who opt in. Research is two-sided here: sync is both the most-requested feature (Maccy #182) *and* the most-distrusted ("I don't trust a 'secure' product that defaults to unsafe behavior" — HN on Paste). Default-off with Apple's E2E iCloud is the only stance consistent with our privacy thesis.
 2. **iOS companion** (favorites + recent history via that opt-in sync). Pastebot's most-mourned gap.
 3. **On-device AI (Apple Intelligence)**: summarize a long clip, clean up formatting, "find the URL I copied yesterday about X" natural-language search. Undercuts the Paste/Raycast AI subscriptions with zero server bill.
 4. **Sharing**: export a category as a file; AirDrop a clip set. No accounts, ever.
 
-## Phase 6 — Screenshot integration (v5)
+## Phase 5 — Screenshot integration
 
 Every screenshot you take lands in Clip's history instantly — no Command-C required. This needs careful engineering because Apple gives no public "screenshot taken" API, and naive approaches break across macOS versions.
 
@@ -121,8 +121,8 @@ Minor version = phase. Patch version = fixes within that phase. v1.0.0 is reserv
 | v0.2.x | Phase 2 fixes | as needed |
 | v0.3.0 | Phase 3 — favorites, categories, collect mode | planned |
 | v0.4.0 | Phase 4 — power tier: queue, transforms, OCR, per-clip hotkeys | planned |
-| v0.5.0 | Phase 5 — reach: opt-in sync, iOS companion, on-device AI | planned |
-| v0.6.0 | Phase 6 — screenshot integration | planned |
+| v0.5.0 | Phase 5 — screenshot integration + clipboard inspector | next |
+| v0.6.0 | Phase 6 — reach: opt-in sync, iOS companion, on-device AI | planned |
 | v1.0.0 | First public release: notarized .dmg, website, announcement | when ready |
 
 A phase with no open fixes is simply done — we move on; no empty patch releases.

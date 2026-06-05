@@ -83,6 +83,17 @@ struct HistoryPanelView: View {
                                     selectedIndex = index
                                     pasteSelected(plain: true)
                                 }
+                                if !store.categories.isEmpty {
+                                    Menu("Add to Category") {
+                                        ForEach(store.categories) { category in
+                                            Button(category.name) { store.assign(item, to: category) }
+                                        }
+                                        if item.categoryID != nil {
+                                            Divider()
+                                            Button("Remove from Category") { store.assign(item, to: nil) }
+                                        }
+                                    }
+                                }
                                 Divider()
                                 Button("Delete", role: .destructive) { store.delete(item) }
                             }

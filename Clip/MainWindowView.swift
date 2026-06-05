@@ -36,6 +36,7 @@ enum ClipFilter: String, CaseIterable, Identifiable {
 enum SidebarSelection: Hashable {
     case filter(ClipFilter)
     case category(UUID)
+    case trash
 }
 
 struct MainWindowView: View {
@@ -61,6 +62,11 @@ struct MainWindowView: View {
     private var filtered: [ClipboardItem] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         switch selection {
+        case .trash:
+            let base = store.trashItems()
+            guard !q.isEmpty else { return base }
+            let needle = q.lowercased()
+            return base.filter { fuzzyMatch(needle: needle, haystack: $0.searchableText.lowercased()) }
         case .category(let id):
             guard let category = store.categories.first(where: { $0.id == id }) else { return [] }
             let base = store.items(in: category)
@@ -120,6 +126,11 @@ struct MainWindowView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Section {
+                    Label(store.trashCount > 0 ? "Trash (\(store.trashCount))" : "Trash",
+                          systemImage: "trash")
+                        .tag(SidebarSelection.trash)
+                }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
         } detail: {
@@ -172,6 +183,13 @@ struct MainWindowView: View {
         ScrollView {
             LazyVStack(spacing: 2) {
                 ForEach(filtered) { item in
+                    if selection == .trash {
+                        TrashItemRow(
+                            item: item,
+                            onRestore: { store.restore(item) },
+                            onDeleteForever: { store.deleteForever(item) }
+                        )
+                    } else {
                     MainItemRow(
                         item: item,
                         categories: store.categories,
@@ -201,6 +219,7 @@ struct MainWindowView: View {
                             }
                         }
                     )
+                    }
                 }
             }
             .padding(8)
@@ -279,14 +298,28 @@ struct MainWindowView: View {
                     .controlSize(.mini)
             }
             Spacer()
-            Button("Clear All (keeps pinned)") { showClearConfirm = true }
-                .controlSize(.small)
-                .confirmationDialog("Remove all unpinned items?",
-                                    isPresented: $showClearConfirm) {
-                    Button("Clear All", role: .destructive) {
-                        store.clearHistory(keepPinned: true)
+            if selection == .trash {
+                Text("Items are removed forever after 30 days")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Button("Empty Trash", role: .destructive) { showClearConfirm = true }
+                    .controlSize(.small)
+                    .confirmationDialog("Permanently delete everything in the Trash?",
+                                        isPresented: $showClearConfirm) {
+                        Button("Empty Trash", role: .destructive) {
+                            store.emptyTrash()
+                        }
                     }
-                }
+            } else {
+                Button("Clear All (keeps pinned)") { showClearConfirm = true }
+                    .controlSize(.small)
+                    .confirmationDialog("Move all unpinned items to the Trash?",
+                                        isPresented: $showClearConfirm) {
+                        Button("Move to Trash", role: .destructive) {
+                            store.clearHistory(keepPinned: true)
+                        }
+                    }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -494,6 +527,64 @@ private struct MainItemRow: View {
             case .fileURLs:
                 Image(systemName: "doc").foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+// MARK: - Trash row
+
+private struct TrashItemRow: View {
+    let item: ClipboardItem
+    let onRestore: () -> Void
+    let onDeleteForever: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: iconName)
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.previewTitle)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    if let app = item.sourceAppName { Text(app) }
+                    Text(item.copiedAt, style: .relative)
+                }
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 8)
+            if hovering {
+                Button("Restore") { onRestore() }
+                    .controlSize(.small)
+                Button(role: .destructive) { onDeleteForever() } label: {
+                    Text("Delete Forever")
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(hovering ? Color.primary.opacity(0.06) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button("Restore") { onRestore() }
+            Button("Delete Forever", role: .destructive) { onDeleteForever() }
+        }
+    }
+
+    private var iconName: String {
+        switch item.content {
+        case .text: return "text.alignleft"
+        case .image: return "photo"
+        case .fileURLs: return "doc"
         }
     }
 }

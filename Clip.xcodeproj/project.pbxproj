@@ -25,6 +25,7 @@
 		A10000010000000000000010 /* PasteQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000012 /* PasteQueue.swift */; };
 		A10000010000000000000011 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000013 /* OCRService.swift */; };
 		A10000010000000000000012 /* ScreenshotWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000014 /* ScreenshotWatcher.swift */; };
+		A10000010000000000000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000015 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 		A10000020000000000000012 /* PasteQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteQueue.swift; sourceTree = "<group>"; };
 		A10000020000000000000013 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		A10000020000000000000014 /* ScreenshotWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotWatcher.swift; sourceTree = "<group>"; };
+		A10000020000000000000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A10000030000000000000001 /* Clip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -91,6 +93,7 @@
 				A10000020000000000000012 /* PasteQueue.swift */,
 				A10000020000000000000013 /* OCRService.swift */,
 				A10000020000000000000014 /* ScreenshotWatcher.swift */,
+				A10000020000000000000015 /* Assets.xcassets */,
 				A10000020000000000000009 /* Info.plist */,
 				A1000002000000000000000A /* Clip.entitlements */,
 			);
@@ -163,6 +166,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000010000000000000013 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -242,6 +246,7 @@
 		A100000B0000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Clip/Clip.entitlements;
 				CODE_SIGN_IDENTITY = "5966B4D479C7956009A7D9A8C5615512854CCF0C";
 				CODE_SIGN_STYLE = Manual;
@@ -266,6 +271,7 @@
 		A100000B0000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Clip/Clip.entitlements;
 				CODE_SIGN_IDENTITY = "5966B4D479C7956009A7D9A8C5615512854CCF0C";
 				CODE_SIGN_STYLE = Manual;

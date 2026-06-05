@@ -1,53 +1,54 @@
 # Clip
 
-A fast, simple, privacy-first clipboard manager for macOS. Lives in your menu bar; pops up with **⌘⇧V**.
+A fast, private, **unlimited** clipboard manager for macOS. Everything stays on your Mac. Everything is free.
+
+Press **⌘⇧V** anywhere — everything you've ever copied, searchable in milliseconds.
+
+## Why Clip
+
+Every competitor rations what your own disk already paid for: Raycast caps free history at 3 months, Paste charges $29.99/year, Windows keeps 25 items, Apple's built-in forgets after ~8 hours. Clip keeps **everything, forever, locally** — and gives away the features others paywall. See [RESEARCH.md](RESEARCH.md) for the competitive analysis and [ROADMAP.md](ROADMAP.md) for where it's going.
 
 ## Features
 
-- **Instant history popup** — global hotkey (default ⌘⇧V, rebindable), opens at your cursor
-- **Fuzzy search** — type to filter; characters match in order anywhere in the clip
-- **Keyboard-first** — ↑/↓ navigate · ⏎ paste · ⌥⏎ paste as plain text · ⌘1–9 quick paste · ⌘P pin · ⌫ delete · ⎋ close
-- **Pin favorites** — pinned items stay on top and survive history clears
-- **Text, images, and files** — rich text keeps its formatting; ⌥⏎ strips it on demand
-- **Privacy by default** — honors the [nspasteboard.org](http://nspasteboard.org) concealed/transient types, so passwords copied from 1Password etc. are never recorded; per-app ignore list; everything stored locally (no cloud, no network), history file is owner-read-only
-- **Direct paste** — selecting an item pastes straight into the app you were using
-- **Settings** — history size, hotkey recorder, launch at login, image capture toggle, clear options
+**Capture** — every copy (text with formatting, images, files) lands in history automatically. Passwords from password managers are excluded by design. Optional: screenshots you take (⇧⌘4) are captured too — no copying needed.
 
-## Requirements
+**Find** — the ⌘⇧V popup with instant full-history search (SQLite FTS under the hood: milliseconds at any size), plus a real desktop window with sidebar filters. Images are OCR'd on-device, so screenshots are searchable by the text inside them. The "Now:" strip always shows exactly what ⌘V would paste.
 
-- macOS 13 (Ventura) or later — Intel and Apple Silicon
-- Xcode 15+ to build
+**Paste** — one click pastes into the app you were using. Option-click for plain text. Paste with transforms (UPPERCASE, trim, pretty-print JSON, URL encode…). Queue several items, then paste them one per ⌘V with a floating progress bar. Multi-select and paste joined.
 
-## Build & run
+**Organize** — pin favorites, file clips into color-coded categories, flip a category into "collect mode" to auto-file everything you copy during a research sprint. Quick-edit any text clip before pasting.
 
-1. Open `Clip.xcodeproj` in Xcode
-2. Select the **Clip** scheme → **My Mac** → press **⌘R**
-3. Look for the paperclip icon in your menu bar
+**Forgive** — deletes go to a 30-day Trash with one-click restore. Holding Backspace can't mass-delete. Re-copying trashed content rescues it.
 
-Or from the command line:
+**Trust** — 100% local. No account, no cloud, no telemetry, no subscription. The only optional network feature (link previews) is off by default and clearly labeled. History is stored owner-only at `~/Library/Application Support/Clip/`.
 
-```sh
-xcodebuild -project Clip.xcodeproj -scheme Clip -configuration Release build
-```
+## Shortcuts
 
-### First-run permissions
+| Keys | Action |
+|---|---|
+| ⌘⇧V | Open the popup (rebindable in Settings) |
+| ↑ ↓ then ⏎ | Choose and paste |
+| ⌥⏎ | Paste as plain text |
+| ⌘1–9 | Paste item 1–9 instantly |
+| ⌘P | Pin / unpin |
+| ⎋ | Close |
+| ⌃⌘V | Paste next queued item |
 
-For **direct paste** (Clip presses ⌘V for you), macOS will prompt once for **Accessibility** permission: System Settings → Privacy & Security → Accessibility → enable Clip. Without it, Clip still works — selecting an item copies it and you paste manually. You can also turn off "Paste directly" in Settings.
+## Install
 
-### Notes
+**Requirements:** macOS 13 (Ventura) or later, Apple Silicon or Intel.
 
-- The app is **not sandboxed**: simulating ⌘V and reading the frontmost app aren't possible in the App Sandbox. This is the same trade-off Maccy's non-App-Store build makes. All data stays on your Mac.
-- History is stored at `~/Library/Application Support/Clip/history.json` with `600` permissions.
+Until the notarized download ships (v1.0.0), build from source:
 
-## Why another clipboard manager?
+1. Clone, open `Clip.xcodeproj` in Xcode 15+
+2. Set your development team under Signing & Capabilities (a stable signing identity keeps macOS permissions across rebuilds)
+3. Run (⌘R), then grant the two permissions Clip asks for, each explained in-app:
+   - **Accessibility** — lets Clip press Paste for you (direct paste)
+   - **Screenshots folder** — only if you enable screenshot capture
 
-See [RESEARCH.md](RESEARCH.md) — a comparison of Maccy, Paste, Pastebot, Raycast, and others, and the gaps Clip is built to fill: Maccy's speed, Paste's pinning UX, and Pastebot's privacy rigor, with zero subscriptions and zero cloud.
+## Testing
 
-## Roadmap
-
-- Sequential paste queue (paste several items one after another)
-- Text transform filters at paste time (case, trim, etc.)
-- OCR search inside image clips
+[TESTING.md](TESTING.md) is the full regression checklist run before every release.
 
 ## License
 

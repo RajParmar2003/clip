@@ -61,6 +61,7 @@ Research: these are the features that remain genuinely power-exclusive across th
 3. **OCR on copied images.** Apple Vision framework, on-device, free. Screenshots become searchable. Paste subscription-gates this; Raycast ships it free — we match Raycast and beat Paste.
 4. **Per-clip global hotkeys.** Assign Command+Option+1 to your address, Command+Option+2 to your signature. Pastebot's secret weapon, made discoverable.
 5. **Snippets with placeholders** (later in phase): {date}, {time}, {clipboard:N}, {cursor} — the Alfred model.
+5b. **Current-clipboard inspector** (requested): a pinned strip at the top of the popup and window showing exactly what's on the system clipboard *right now* — type, preview, size, source app — so you always know what ⌘V is about to paste before you paste it. Includes a "clear clipboard" action.
 6. **Scripting surface**: a small CLI (`clip list`, `clip get N`, `clip search`) and Shortcuts.app actions. Power users on HN consistently reward scriptability with loyalty.
 
 ## Phase 5 — Reach (v4, the honest trade-offs)

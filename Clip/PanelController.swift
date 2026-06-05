@@ -115,7 +115,24 @@ final class PanelController: NSObject, NSWindowDelegate, ObservableObject {
 
 /// Synthesizes ⌘V via CGEvent. Requires Accessibility permission (one-time prompt).
 enum Paster {
-    static func sendCmdV() {
+    /// Waits for the user's physical modifier keys (and the V key itself, if
+    /// the paste was triggered by a hotkey like ⌃⌘V) to be released before
+    /// posting ⌘V. Posting while Control is still physically held makes the
+    /// target app see ⌃⌘V — which pastes nothing.
+    static func sendCmdV(attemptsLeft: Int = 30) {
+        let flags = CGEventSource.flagsState(.combinedSessionState)
+        let blocking: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
+        let vStillDown = CGEventSource.keyState(.combinedSessionState, key: 9) // kVK_ANSI_V
+        if (!flags.intersection(blocking).isEmpty || vStillDown), attemptsLeft > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                sendCmdV(attemptsLeft: attemptsLeft - 1)
+            }
+            return
+        }
+        postCmdV()
+    }
+
+    private static func postCmdV() {
         guard accessibilityGranted(promptIfNeeded: true) else { return }
         let src = CGEventSource(stateID: .combinedSessionState)
         // 9 = kVK_ANSI_V

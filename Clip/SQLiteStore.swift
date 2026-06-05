@@ -63,6 +63,47 @@ final class SQLiteStore {
         let version = scalarInt("PRAGMA user_version") ?? 0
         if version < 1 { migrateToV1() }
         if version < 2 { migrateToV2() }
+        if version < 3 { migrateToV3() }
+    }
+
+    /// v3: OCR text column, indexed by FTS. FTS5 can't add columns, so the
+    /// index is dropped and rebuilt from the content table (fast: 'rebuild'
+    /// scans items once).
+    private func migrateToV3() {
+        let hasColumn = scalarInt("SELECT COUNT(*) FROM pragma_table_info('items') WHERE name = 'ocr_text'") ?? 0
+        if hasColumn == 0 {
+            exec("ALTER TABLE items ADD COLUMN ocr_text TEXT")
+        }
+        exec("""
+        DROP TRIGGER IF EXISTS items_ai;
+        DROP TRIGGER IF EXISTS items_ad;
+        DROP TRIGGER IF EXISTS items_au;
+        DROP TABLE IF EXISTS items_fts;
+
+        CREATE VIRTUAL TABLE items_fts USING fts5(
+            text, link_title, ocr_text,
+            content='items', content_rowid='rowid',
+            tokenize='trigram'
+        );
+
+        CREATE TRIGGER items_ai AFTER INSERT ON items BEGIN
+            INSERT INTO items_fts(rowid, text, link_title, ocr_text)
+            VALUES (new.rowid, coalesce(new.text,''), coalesce(new.link_title,''), coalesce(new.ocr_text,''));
+        END;
+        CREATE TRIGGER items_ad AFTER DELETE ON items BEGIN
+            INSERT INTO items_fts(items_fts, rowid, text, link_title, ocr_text)
+            VALUES ('delete', old.rowid, coalesce(old.text,''), coalesce(old.link_title,''), coalesce(old.ocr_text,''));
+        END;
+        CREATE TRIGGER items_au AFTER UPDATE OF text, link_title, ocr_text ON items BEGIN
+            INSERT INTO items_fts(items_fts, rowid, text, link_title, ocr_text)
+            VALUES ('delete', old.rowid, coalesce(old.text,''), coalesce(old.link_title,''), coalesce(old.ocr_text,''));
+            INSERT INTO items_fts(rowid, text, link_title, ocr_text)
+            VALUES (new.rowid, coalesce(new.text,''), coalesce(new.link_title,''), coalesce(new.ocr_text,''));
+        END;
+
+        INSERT INTO items_fts(items_fts) VALUES('rebuild');
+        PRAGMA user_version = 3;
+        """)
     }
 
     private func migrateToV2() {
@@ -298,6 +339,11 @@ final class SQLiteStore {
             [.textOpt(categoryID?.uuidString), .text(itemID.uuidString)])
     }
 
+    func setOCRText(id: UUID, text: String?) {
+        run("UPDATE items SET ocr_text = ? WHERE id = ?",
+            [.textOpt(text), .text(id.uuidString)])
+    }
+
     func fetchCategories() -> [ClipCategory] {
         var out: [ClipCategory] = []
         var stmt: OpaquePointer?
@@ -424,9 +470,9 @@ final class SQLiteStore {
                 .replacingOccurrences(of: "_", with: "\\_") + "%"
             return query("""
             SELECT * FROM items
-            WHERE (text LIKE ? ESCAPE '\\' OR link_title LIKE ? ESCAPE '\\')
+            WHERE (text LIKE ? ESCAPE '\\' OR link_title LIKE ? ESCAPE '\\' OR ocr_text LIKE ? ESCAPE '\\')
             ORDER BY pinned DESC, copied_at DESC LIMIT ?
-            """, [.text(pattern), .text(pattern), .int(limit)])
+            """, [.text(pattern), .text(pattern), .text(pattern), .int(limit)])
         }
     }
 
@@ -506,6 +552,10 @@ final class SQLiteStore {
         // category_id was added in schema v2 as column 15.
         if sqlite3_column_count(stmt) > 15, let cat = text(15) {
             item.categoryID = UUID(uuidString: cat)
+        }
+        // ocr_text was added in schema v3 as column 16.
+        if sqlite3_column_count(stmt) > 16 {
+            item.ocrText = text(16)
         }
         return item
     }

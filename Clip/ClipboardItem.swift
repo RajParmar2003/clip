@@ -27,6 +27,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var imageFile: String?
     /// Category assignment (Phase 3).
     var categoryID: UUID?
+    /// Text recognized inside an image (Phase 4, on-device Vision OCR).
+    var ocrText: String?
 
     init(content: ClipContent,
          sourceAppBundleID: String? = nil,
@@ -45,6 +47,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.linkIconPNG = nil
         self.imageFile = nil
         self.categoryID = nil
+        self.ocrText = nil
     }
 
     /// Used by the storage engine when rehydrating a row: a DB row keeps the

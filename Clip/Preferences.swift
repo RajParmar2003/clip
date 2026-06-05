@@ -24,6 +24,7 @@ final class Preferences: ObservableObject {
         static let hasOnboarded = "hasOnboarded"
         static let retentionDays = "retentionDays"
         static let imageRetentionDays = "imageRetentionDays"
+        static let ocrImages = "ocrImages"
     }
 
     private init() {
@@ -43,7 +44,14 @@ final class Preferences: ObservableObject {
             // The single network-touching feature; privacy-first means opt-in.
             Keys.fetchLinkPreviews: false,
             Keys.hasOnboarded: false,
+            // Vision OCR is fully on-device — no privacy cost, on by default.
+            Keys.ocrImages: true,
         ])
+    }
+
+    var ocrImages: Bool {
+        get { defaults.bool(forKey: Keys.ocrImages) }
+        set { defaults.set(newValue, forKey: Keys.ocrImages); objectWillChange.send() }
     }
 
     var fetchLinkPreviews: Bool {

@@ -261,8 +261,34 @@ final class ClipboardStore: ObservableObject {
 
             if isNew {
                 LinkMetadataFetcher.shared.enrich(stored, in: self)
+                self.runOCRIfNeeded(on: stored)
             }
         }
+    }
+
+    /// On-device OCR for captured images; recognized text becomes searchable.
+    private func runOCRIfNeeded(on item: ClipboardItem) {
+        guard Preferences.shared.ocrImages,
+              case .image = item.content,
+              item.ocrText == nil,
+              let fullImage = engine.loadFullImage(for: item) else { return }
+        OCRService.recognizeText(in: fullImage) { [weak self] text in
+            guard let self, let text else { return }
+            self.engine.setOCRText(id: item.id, text: text)
+            if let idx = self.items.firstIndex(where: { $0.id == item.id }) {
+                self.items[idx].ocrText = text
+            }
+        }
+    }
+
+    /// Paste-time transform: loads the pasteboard with the transformed text
+    /// without altering the stored item.
+    func copyTransformed(_ item: ClipboardItem, transform: TextTransform) {
+        guard case .text(let s) = item.content else { return }
+        let pb = NSPasteboard.general
+        ignoreNextChange = true
+        pb.clearContents()
+        pb.setString(transform.apply(to: s), forType: .string)
     }
 
     /// Called back by LinkMetadataFetcher once a URL's title/icon arrive.

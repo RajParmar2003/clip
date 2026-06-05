@@ -41,6 +41,7 @@ enum SidebarSelection: Hashable {
 struct MainWindowView: View {
     @ObservedObject var store: ClipboardStore
     let controller: MainWindowController
+    @ObservedObject var queue: PasteQueue
 
     @State private var query = ""
     @State private var selection: SidebarSelection = .filter(.all)
@@ -176,13 +177,22 @@ struct MainWindowView: View {
                         categories: store.categories,
                         itemCategory: store.categories.first { $0.id == item.categoryID },
                         isMultiSelected: selectedIDs.contains(item.id),
+                        isQueued: controller.queue.contains(item),
                         onPaste: { controller.select(item, plainTextOnly: false) },
                         onPastePlain: { controller.select(item, plainTextOnly: true) },
+                        onPasteTransformed: { controller.selectTransformed(item, transform: $0) },
                         onCopy: { controller.copyOnly(item) },
                         onPin: { store.togglePin(item) },
                         onDelete: { store.delete(item) },
                         onEdit: { editingItem = item },
                         onAssign: { store.assign(item, to: $0) },
+                        onToggleQueue: {
+                            if controller.queue.contains(item) {
+                                controller.queue.remove(item)
+                            } else {
+                                controller.queue.enqueue(item)
+                            }
+                        },
                         onToggleMultiSelect: {
                             if selectedIDs.contains(item.id) {
                                 selectedIDs.remove(item.id)
@@ -260,6 +270,14 @@ struct MainWindowView: View {
             Text("\(filtered.count) item\(filtered.count == 1 ? "" : "s")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if !queue.isEmpty {
+                Divider().frame(height: 12)
+                Label("\(queue.count) queued — ⌃⌘V pastes next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Clear Queue") { queue.clear() }
+                    .controlSize(.mini)
+            }
             Spacer()
             Button("Clear All (keeps pinned)") { showClearConfirm = true }
                 .controlSize(.small)
@@ -282,13 +300,16 @@ private struct MainItemRow: View {
     let categories: [ClipCategory]
     let itemCategory: ClipCategory?
     let isMultiSelected: Bool
+    let isQueued: Bool
     let onPaste: () -> Void
     let onPastePlain: () -> Void
+    let onPasteTransformed: (TextTransform) -> Void
     let onCopy: () -> Void
     let onPin: () -> Void
     let onDelete: () -> Void
     let onEdit: () -> Void
     let onAssign: (ClipCategory?) -> Void
+    let onToggleQueue: () -> Void
     let onToggleMultiSelect: () -> Void
 
     @State private var hovering = false
@@ -332,11 +353,13 @@ private struct MainItemRow: View {
                     Menu {
                         Button("Paste") { onPaste() }
                         Button("Paste as Plain Text") { onPastePlain() }
+                        transformMenu
                         Button("Copy") { onCopy() }
                         if isEditableText {
                             Button("Edit…") { onEdit() }
                         }
                         Divider()
+                        Button(isQueued ? "Remove from Paste Queue" : "Add to Paste Queue") { onToggleQueue() }
                         Button(item.isPinned ? "Unpin" : "Pin") { onPin() }
                         categoryMenu
                         if let url = item.asURL {
@@ -351,10 +374,18 @@ private struct MainItemRow: View {
                     .frame(width: 24)
                     .help("More actions")
                 }
-            } else if item.isPinned {
-                Image(systemName: "pin.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+            } else {
+                if isQueued {
+                    Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                        .help("In the paste queue")
+                }
+                if item.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .padding(.horizontal, 10)
@@ -383,14 +414,27 @@ private struct MainItemRow: View {
         .contextMenu {
             Button("Paste") { onPaste() }
             Button("Paste as Plain Text") { onPastePlain() }
+            transformMenu
             if isEditableText { Button("Edit…") { onEdit() } }
             Divider()
+            Button(isQueued ? "Remove from Paste Queue" : "Add to Paste Queue") { onToggleQueue() }
             Button(item.isPinned ? "Unpin" : "Pin") { onPin() }
             categoryMenu
             Divider()
             Button("Delete", role: .destructive) { onDelete() }
         }
         .help("Click to paste · Command-click to select multiple")
+    }
+
+    @ViewBuilder
+    private var transformMenu: some View {
+        if isEditableText {
+            Menu("Paste with Transform") {
+                ForEach(TextTransform.allCases) { transform in
+                    Button(transform.rawValue) { onPasteTransformed(transform) }
+                }
+            }
+        }
     }
 
     @ViewBuilder

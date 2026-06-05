@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import SwiftUI
 
 @main
@@ -59,11 +60,13 @@ extension Notification.Name {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let clipboardStore = ClipboardStore()
+    private(set) lazy var pasteQueue = PasteQueue(store: clipboardStore)
     private var statusItem: NSStatusItem!
     private var panelController: PanelController!
     private var mainWindowController: MainWindowController!
     private let onboarding = OnboardingController()
     private var hotKey: HotKey?
+    private var queueHotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu-bar-only app: no Dock icon.
@@ -77,10 +80,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
         }
 
-        panelController = PanelController(store: clipboardStore)
-        mainWindowController = MainWindowController(store: clipboardStore)
+        panelController = PanelController(store: clipboardStore, queue: pasteQueue)
+        mainWindowController = MainWindowController(store: clipboardStore, queue: pasteQueue)
         clipboardStore.startMonitoring()
         registerHotKey()
+
+        // Control+Command+V pastes the next queued item (kVK_ANSI_V = 9).
+        queueHotKey = HotKey(keyCode: 9, modifiers: UInt32(cmdKey | controlKey)) { [weak self] in
+            self?.pasteQueue.pasteNext()
+        }
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(hotKeyPreferenceChanged),

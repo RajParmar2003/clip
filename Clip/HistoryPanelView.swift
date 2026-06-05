@@ -5,6 +5,7 @@ import SwiftUI
 struct HistoryPanelView: View {
     @ObservedObject var store: ClipboardStore
     @ObservedObject var controller: PanelController
+    @ObservedObject var queue: PasteQueue
 
     @State private var query = ""
     @State private var selectedIndex = 0
@@ -83,6 +84,18 @@ struct HistoryPanelView: View {
                                     selectedIndex = index
                                     pasteSelected(plain: true)
                                 }
+                                if item.content.isText {
+                                    Menu("Paste with Transform") {
+                                        ForEach(TextTransform.allCases) { transform in
+                                            Button(transform.rawValue) {
+                                                controller.selectTransformed(item, transform: transform)
+                                            }
+                                        }
+                                    }
+                                }
+                                Button(queue.contains(item) ? "Remove from Paste Queue" : "Add to Paste Queue") {
+                                    queue.contains(item) ? queue.remove(item) : queue.enqueue(item)
+                                }
                                 if !store.categories.isEmpty {
                                     Menu("Add to Category") {
                                         ForEach(store.categories) { category in
@@ -128,6 +141,10 @@ struct HistoryPanelView: View {
             Text("⌥⏎ plain")
             Text("⌘P pin")
             Spacer()
+            if !queue.isEmpty {
+                Text("⌃⌘V next of \(queue.count)")
+                    .foregroundStyle(.blue)
+            }
             Text("\(filtered.count) items")
             Button {
                 controller.hide()

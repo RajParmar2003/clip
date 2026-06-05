@@ -11,13 +11,25 @@ struct HistoryPanelView: View {
     @FocusState private var searchFocused: Bool
 
     private var filtered: [ClipboardItem] {
-        let base = store.items.sorted { lhs, rhs in
-            if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
-            return lhs.copiedAt > rhs.copiedAt
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else {
+            return store.items.sorted { lhs, rhs in
+                if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
+                return lhs.copiedAt > rhs.copiedAt
+            }
         }
-        guard !query.isEmpty else { return base }
-        let q = query.lowercased()
-        return base.filter { fuzzyMatch(needle: q, haystack: $0.searchableText.lowercased()) }
+        // Full-history search through the engine (FTS). For very short
+        // queries, blend in fuzzy matches from the working set so 1–2
+        // character typing still feels instant and forgiving.
+        var results = store.search(q)
+        if q.count < 3 {
+            let needle = q.lowercased()
+            let seen = Set(results.map(\.id))
+            results += store.items.filter {
+                !seen.contains($0.id) && fuzzyMatch(needle: needle, haystack: $0.searchableText.lowercased())
+            }
+        }
+        return results
     }
 
     var body: some View {

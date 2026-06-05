@@ -42,18 +42,18 @@ struct MainWindowView: View {
     @State private var showClearConfirm = false
 
     private var filtered: [ClipboardItem] {
-        let base = store.items
-            .filter { filter.matches($0) }
-            .sorted { lhs, rhs in
-                if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
-                return lhs.copiedAt > rhs.copiedAt
-            }
-        guard !query.isEmpty else { return Array(base.prefix(500)) }
-        let q = query.lowercased()
-        return base.filter {
-            fuzzyMatch(needle: q, haystack: $0.searchableText.lowercased())
-                || fuzzyMatch(needle: q, haystack: ($0.linkTitle ?? "").lowercased())
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty {
+            let base = store.items
+                .filter { filter.matches($0) }
+                .sorted { lhs, rhs in
+                    if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
+                    return lhs.copiedAt > rhs.copiedAt
+                }
+            return Array(base.prefix(500))
         }
+        // Full-history search via the engine, then apply the sidebar filter.
+        return store.search(q).filter { filter.matches($0) }
     }
 
     var body: some View {

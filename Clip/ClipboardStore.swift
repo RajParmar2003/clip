@@ -32,6 +32,7 @@ final class ClipboardStore: ObservableObject {
         refreshWorkingSet()
         categories = engine.fetchCategories()
         applyRetention()
+        trashCount = engine.trashCount()
     }
 
     // MARK: - Categories
@@ -103,6 +104,8 @@ final class ClipboardStore: ObservableObject {
         engine.applyRetention(maxItems: p.historyLimit,
                               maxAgeDays: p.retentionDays,
                               imageMaxAgeDays: p.imageRetentionDays)
+        engine.purgeExpiredTrash(olderThanDays: 30)
+        trashCount = engine.trashCount()
         refreshWorkingSet()
         // Re-run daily so age-based expiry actually expires things.
         if retentionTimer == nil {
@@ -310,14 +313,45 @@ final class ClipboardStore: ObservableObject {
         engine.setPinned(items[idx].isPinned, id: item.id)
     }
 
+    /// Soft delete — the item moves to the Trash (recoverable for 30 days).
     func delete(_ item: ClipboardItem) {
         engine.delete(id: item.id)
         items.removeAll { $0.id == item.id }
+        trashDidChange()
     }
 
     func clearHistory(keepPinned: Bool) {
         engine.clear(keepPinned: keepPinned)
         refreshWorkingSet()
+        trashDidChange()
+    }
+
+    // MARK: - Trash
+
+    @Published private(set) var trashCount = 0
+
+    func trashItems() -> [ClipboardItem] {
+        engine.fetchTrash()
+    }
+
+    func restore(_ item: ClipboardItem) {
+        engine.restore(id: item.id)
+        refreshWorkingSet()
+        trashDidChange()
+    }
+
+    func deleteForever(_ item: ClipboardItem) {
+        engine.purge(id: item.id)
+        trashDidChange()
+    }
+
+    func emptyTrash() {
+        engine.emptyTrash()
+        trashDidChange()
+    }
+
+    private func trashDidChange() {
+        trashCount = engine.trashCount()
     }
 
     // MARK: - Writing back to pasteboard

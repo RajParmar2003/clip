@@ -64,6 +64,20 @@ final class SQLiteStore {
         if version < 1 { migrateToV1() }
         if version < 2 { migrateToV2() }
         if version < 3 { migrateToV3() }
+        if version < 4 { migrateToV4() }
+    }
+
+    /// v4: Trash. Deletes become recoverable — deleted_at marks an item as
+    /// trashed; a sweep purges trash older than 30 days.
+    private func migrateToV4() {
+        let hasColumn = scalarInt("SELECT COUNT(*) FROM pragma_table_info('items') WHERE name = 'deleted_at'") ?? 0
+        if hasColumn == 0 {
+            exec("ALTER TABLE items ADD COLUMN deleted_at REAL")
+        }
+        exec("""
+        CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at) WHERE deleted_at IS NOT NULL;
+        PRAGMA user_version = 4;
+        """)
     }
 
     /// v3: OCR text column, indexed by FTS. FTS5 can't add columns, so the
@@ -258,7 +272,8 @@ final class SQLiteStore {
             existing.copiedAt = item.copiedAt
             existing.sourceAppBundleID = item.sourceAppBundleID
             existing.sourceAppName = item.sourceAppName
-            run("UPDATE items SET copied_at = ?, source_bundle = ?, source_name = ? WHERE content_hash = ?",
+            // Re-copying trashed content rescues it from the Trash.
+            run("UPDATE items SET copied_at = ?, source_bundle = ?, source_name = ?, deleted_at = NULL WHERE content_hash = ?",
                 [.real(item.copiedAt.timeIntervalSince1970),
                  .textOpt(item.sourceAppBundleID), .textOpt(item.sourceAppName), .text(hash)])
             return existing
@@ -388,41 +403,73 @@ final class SQLiteStore {
     }
 
     func fetchItems(categoryID: UUID, limit: Int = 2_000) -> [ClipboardItem] {
-        query("SELECT * FROM items WHERE category_id = ? ORDER BY pinned DESC, copied_at DESC LIMIT ?",
+        query("SELECT * FROM items WHERE category_id = ? AND deleted_at IS NULL ORDER BY pinned DESC, copied_at DESC LIMIT ?",
               [.text(categoryID.uuidString), .int(limit)])
     }
 
+    /// Soft delete: moves the item to the Trash. Image files stay on disk
+    /// until the trash entry is purged.
     func delete(id: UUID) {
+        run("UPDATE items SET deleted_at = ? WHERE id = ?",
+            [.real(Date().timeIntervalSince1970), .text(id.uuidString)])
+    }
+
+    func restore(id: UUID) {
+        run("UPDATE items SET deleted_at = NULL WHERE id = ?", [.text(id.uuidString)])
+    }
+
+    /// Permanent removal — only reachable from the Trash UI or the purge sweep.
+    func purge(id: UUID) {
         deleteImageFiles(where: "id = ?", binds: [.text(id.uuidString)])
         run("DELETE FROM items WHERE id = ?", [.text(id.uuidString)])
     }
 
-    func clear(keepPinned: Bool) {
-        let condition = keepPinned ? "pinned = 0" : "1 = 1"
-        deleteImageFiles(where: condition, binds: [])
-        run("DELETE FROM items WHERE \(condition)", [])
+    func emptyTrash() {
+        deleteImageFiles(where: "deleted_at IS NOT NULL", binds: [])
+        run("DELETE FROM items WHERE deleted_at IS NOT NULL", [])
     }
 
-    /// Retention sweep: 0 means "keep forever" for every knob.
+    /// Purges trash entries older than `days`.
+    func purgeExpiredTrash(olderThanDays days: Int) {
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86_400).timeIntervalSince1970
+        deleteImageFiles(where: "deleted_at IS NOT NULL AND deleted_at < ?", binds: [.real(cutoff)])
+        run("DELETE FROM items WHERE deleted_at IS NOT NULL AND deleted_at < ?", [.real(cutoff)])
+    }
+
+    func fetchTrash(limit: Int = 2_000) -> [ClipboardItem] {
+        query("SELECT * FROM items WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?",
+              [.int(limit)])
+    }
+
+    func trashCount() -> Int {
+        scalarInt("SELECT COUNT(*) FROM items WHERE deleted_at IS NOT NULL") ?? 0
+    }
+
+    /// Clear All: soft — everything lands in the Trash, fully recoverable.
+    func clear(keepPinned: Bool) {
+        let condition = keepPinned ? "pinned = 0" : "1 = 1"
+        run("UPDATE items SET deleted_at = ? WHERE deleted_at IS NULL AND (\(condition))",
+            [.real(Date().timeIntervalSince1970)])
+    }
+
+    /// Retention sweep: 0 means "keep forever" for every knob. Expired items
+    /// go to the Trash (30-day safety net) rather than vanishing.
     func applyRetention(maxItems: Int, maxAgeDays: Int, imageMaxAgeDays: Int) {
+        let now = Date().timeIntervalSince1970
         if maxAgeDays > 0 {
-            let cutoff = Date().addingTimeInterval(-Double(maxAgeDays) * 86_400).timeIntervalSince1970
-            deleteImageFiles(where: "pinned = 0 AND copied_at < ?", binds: [.real(cutoff)])
-            run("DELETE FROM items WHERE pinned = 0 AND copied_at < ?", [.real(cutoff)])
+            let cutoff = now - Double(maxAgeDays) * 86_400
+            run("UPDATE items SET deleted_at = ? WHERE deleted_at IS NULL AND pinned = 0 AND copied_at < ?",
+                [.real(now), .real(cutoff)])
         }
         if imageMaxAgeDays > 0 {
-            let cutoff = Date().addingTimeInterval(-Double(imageMaxAgeDays) * 86_400).timeIntervalSince1970
-            deleteImageFiles(where: "pinned = 0 AND kind = 1 AND copied_at < ?", binds: [.real(cutoff)])
-            run("DELETE FROM items WHERE pinned = 0 AND kind = 1 AND copied_at < ?", [.real(cutoff)])
+            let cutoff = now - Double(imageMaxAgeDays) * 86_400
+            run("UPDATE items SET deleted_at = ? WHERE deleted_at IS NULL AND pinned = 0 AND kind = 1 AND copied_at < ?",
+                [.real(now), .real(cutoff)])
         }
         if maxItems > 0 {
-            deleteImageFiles(where: """
-                pinned = 0 AND rowid NOT IN
-                (SELECT rowid FROM items WHERE pinned = 0 ORDER BY copied_at DESC LIMIT \(maxItems))
-                """, binds: [])
             run("""
-                DELETE FROM items WHERE pinned = 0 AND rowid NOT IN
-                (SELECT rowid FROM items WHERE pinned = 0 ORDER BY copied_at DESC LIMIT \(maxItems))
+                UPDATE items SET deleted_at = \(now) WHERE deleted_at IS NULL AND pinned = 0 AND rowid NOT IN
+                (SELECT rowid FROM items WHERE deleted_at IS NULL AND pinned = 0 ORDER BY copied_at DESC LIMIT \(maxItems))
                 """, [])
         }
     }
@@ -446,9 +493,9 @@ final class SQLiteStore {
     /// Working set: all pinned + most recent unpinned, newest first, pinned on top.
     func fetchWorkingSet(recentLimit: Int) -> [ClipboardItem] {
         query("""
-        SELECT * FROM items WHERE pinned = 1
+        SELECT * FROM items WHERE pinned = 1 AND deleted_at IS NULL
         UNION ALL
-        SELECT * FROM (SELECT * FROM items WHERE pinned = 0 ORDER BY copied_at DESC LIMIT ?)
+        SELECT * FROM (SELECT * FROM items WHERE pinned = 0 AND deleted_at IS NULL ORDER BY copied_at DESC LIMIT ?)
         ORDER BY pinned DESC, copied_at DESC
         """, [.int(recentLimit)])
     }
@@ -463,7 +510,7 @@ final class SQLiteStore {
             return query("""
             SELECT items.* FROM items_fts
             JOIN items ON items.rowid = items_fts.rowid
-            WHERE items_fts MATCH '"' || ? || '"'
+            WHERE items_fts MATCH '"' || ? || '"' AND items.deleted_at IS NULL
             ORDER BY items.pinned DESC, items.copied_at DESC LIMIT ?
             """, [.text(escaped), .int(limit)])
         } else {
@@ -473,7 +520,8 @@ final class SQLiteStore {
                 .replacingOccurrences(of: "_", with: "\\_") + "%"
             return query("""
             SELECT * FROM items
-            WHERE (text LIKE ? ESCAPE '\\' OR link_title LIKE ? ESCAPE '\\' OR ocr_text LIKE ? ESCAPE '\\')
+            WHERE deleted_at IS NULL
+              AND (text LIKE ? ESCAPE '\\' OR link_title LIKE ? ESCAPE '\\' OR ocr_text LIKE ? ESCAPE '\\')
             ORDER BY pinned DESC, copied_at DESC LIMIT ?
             """, [.text(pattern), .text(pattern), .text(pattern), .int(limit)])
         }
@@ -497,8 +545,8 @@ final class SQLiteStore {
     }
 
     func stats() -> Stats {
-        let total = scalarInt("SELECT COUNT(*) FROM items") ?? 0
-        let pinned = scalarInt("SELECT COUNT(*) FROM items WHERE pinned = 1") ?? 0
+        let total = scalarInt("SELECT COUNT(*) FROM items WHERE deleted_at IS NULL") ?? 0
+        let pinned = scalarInt("SELECT COUNT(*) FROM items WHERE pinned = 1 AND deleted_at IS NULL") ?? 0
         var dbBytes: Int64 = 0
         for suffix in ["", "-wal", "-shm"] {
             let attrs = try? FileManager.default.attributesOfItem(atPath: dbURL.path + suffix)

@@ -181,6 +181,9 @@ struct HistoryPanelView: View {
             pasteSelected(plain: flags.contains(.option))
             return true
         case 51: // delete
+            // Guard against key auto-repeat: holding Backspace must never
+            // machine-gun through history. One press, one (recoverable) delete.
+            if event.isARepeat { return true }
             if query.isEmpty, filtered.indices.contains(selectedIndex) {
                 store.delete(filtered[selectedIndex])
                 if selectedIndex >= filtered.count - 1 { selectedIndex = max(0, filtered.count - 2) }

@@ -10,7 +10,7 @@ enum ClipContent: Codable, Equatable {
 }
 
 struct ClipboardItem: Identifiable, Codable, Equatable {
-    let id: UUID
+    private(set) var id: UUID
     var content: ClipContent
     var copiedAt: Date
     var sourceAppBundleID: String?
@@ -22,6 +22,9 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// Filled in asynchronously for URL items when link previews are enabled.
     var linkTitle: String?
     var linkIconPNG: Data?
+    /// For large images stored on disk: filename inside the images directory.
+    /// When set, `content` holds only a thumbnail; paste loads the full file.
+    var imageFile: String?
 
     init(content: ClipContent,
          sourceAppBundleID: String? = nil,
@@ -38,6 +41,15 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.htmlData = htmlData
         self.linkTitle = nil
         self.linkIconPNG = nil
+        self.imageFile = nil
+    }
+
+    /// Used by the storage engine when rehydrating a row: a DB row keeps the
+    /// identity it was stored with, not a freshly generated one.
+    mutating func restoreIdentity(id: UUID, copiedAt: Date, isPinned: Bool) {
+        self.id = id
+        self.copiedAt = copiedAt
+        self.isPinned = isPinned
     }
 
     /// If this item is a single copied http(s) URL, returns it.

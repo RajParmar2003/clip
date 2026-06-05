@@ -30,8 +30,12 @@ final class HotKey {
                 let instance = Unmanaged<HotKey>.fromOpaque(userData).takeUnretainedValue()
                 if hkID.id == instance.registeredID {
                     DispatchQueue.main.async { instance.handler() }
+                    return noErr
                 }
-                return noErr
+                // Not ours — pass the event along the handler chain so other
+                // HotKey instances get their turn. Returning noErr here would
+                // swallow every other hotkey in the app.
+                return OSStatus(eventNotHandledErr)
             },
             1, &eventType, selfPtr, &eventHandler
         )

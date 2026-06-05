@@ -74,7 +74,14 @@ final class SQLiteStore {
             is_collecting INTEGER NOT NULL DEFAULT 0,
             sort_order    INTEGER NOT NULL DEFAULT 0
         );
-        ALTER TABLE items ADD COLUMN category_id TEXT;
+        """)
+        // ALTER TABLE isn't idempotent — guard it so a partially-applied
+        // migration can always be retried safely.
+        let hasColumn = scalarInt("SELECT COUNT(*) FROM pragma_table_info('items') WHERE name = 'category_id'") ?? 0
+        if hasColumn == 0 {
+            exec("ALTER TABLE items ADD COLUMN category_id TEXT")
+        }
+        exec("""
         CREATE INDEX IF NOT EXISTS idx_items_category ON items(category_id) WHERE category_id IS NOT NULL;
         PRAGMA user_version = 2;
         """)

@@ -25,6 +25,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// For large images stored on disk: filename inside the images directory.
     /// When set, `content` holds only a thumbnail; paste loads the full file.
     var imageFile: String?
+    /// Category assignment (Phase 3).
+    var categoryID: UUID?
 
     init(content: ClipContent,
          sourceAppBundleID: String? = nil,
@@ -42,6 +44,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.linkTitle = nil
         self.linkIconPNG = nil
         self.imageFile = nil
+        self.categoryID = nil
     }
 
     /// Used by the storage engine when rehydrating a row: a DB row keeps the

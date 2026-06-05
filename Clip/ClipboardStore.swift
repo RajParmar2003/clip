@@ -11,6 +11,7 @@ import os.log
 /// queries the full, unlimited history in the database.
 final class ClipboardStore: ObservableObject {
     @Published private(set) var items: [ClipboardItem] = []
+    @Published private(set) var categories: [ClipCategory] = []
 
     let engine = SQLiteStore()
     static let workingSetLimit = 1_000
@@ -29,7 +30,61 @@ final class ClipboardStore: ObservableObject {
 
     init() {
         refreshWorkingSet()
+        categories = engine.fetchCategories()
         applyRetention()
+    }
+
+    // MARK: - Categories
+
+    var collectingCategory: ClipCategory? { categories.first { $0.isCollecting } }
+
+    func addCategory(name: String, colorHex: String) {
+        let category = ClipCategory(name: name, colorHex: colorHex,
+                                    sortOrder: (categories.map(\.sortOrder).max() ?? 0) + 1)
+        engine.saveCategory(category)
+        categories = engine.fetchCategories()
+    }
+
+    func renameCategory(_ category: ClipCategory, to name: String) {
+        var updated = category
+        updated.name = name
+        engine.saveCategory(updated)
+        categories = engine.fetchCategories()
+    }
+
+    func deleteCategory(_ category: ClipCategory) {
+        engine.deleteCategory(id: category.id)
+        categories = engine.fetchCategories()
+        refreshWorkingSet()
+    }
+
+    /// Toggle collect mode. Only one category collects at a time.
+    func setCollecting(_ category: ClipCategory?, enabled: Bool) {
+        engine.setCollecting(categoryID: enabled ? category?.id : nil)
+        categories = engine.fetchCategories()
+    }
+
+    func assign(_ item: ClipboardItem, to category: ClipCategory?) {
+        engine.setCategory(itemID: item.id, categoryID: category?.id)
+        if let idx = items.firstIndex(where: { $0.id == item.id }) {
+            items[idx].categoryID = category?.id
+        }
+    }
+
+    func items(in category: ClipCategory) -> [ClipboardItem] {
+        engine.fetchItems(categoryID: category.id)
+    }
+
+    /// Quick edit: rewrite a text item's content before pasting it.
+    func updateText(_ item: ClipboardItem, to newText: String) {
+        engine.updateText(id: item.id, newText: newText)
+        if let idx = items.firstIndex(where: { $0.id == item.id }) {
+            items[idx].content = .text(newText)
+            items[idx].rtfData = nil
+            items[idx].htmlData = nil
+            items[idx].linkTitle = nil
+            items[idx].linkIconPNG = nil
+        }
     }
 
     private func refreshWorkingSet() {
@@ -181,10 +236,20 @@ final class ClipboardStore: ObservableObject {
 
     private func add(_ item: ClipboardItem) {
         DispatchQueue.main.async {
+            var incoming = item
+            // Collect mode: file every new copy into the collecting category.
+            if let collecting = self.collectingCategory {
+                incoming.categoryID = collecting.id
+            }
             // Engine dedups by content hash: identical content keeps its row
             // (and pin state) and just gets fresher recency.
-            let isNew = !self.items.contains { $0.content == item.content }
-            let stored = self.engine.upsert(item)
+            let isNew = !self.items.contains { $0.content == incoming.content }
+            var stored = self.engine.upsert(incoming)
+            if let collecting = self.collectingCategory, stored.categoryID == nil {
+                // Dedup returned an existing row — file that one too.
+                self.engine.setCategory(itemID: stored.id, categoryID: collecting.id)
+                stored.categoryID = collecting.id
+            }
 
             // Update the in-memory working set without a full refetch.
             self.items.removeAll { $0.id == stored.id }

@@ -61,7 +61,26 @@ final class SQLiteStore {
 
     private func migrateSchema() {
         let version = scalarInt("PRAGMA user_version") ?? 0
-        guard version < 1 else { return }
+        if version < 1 { migrateToV1() }
+        if version < 2 { migrateToV2() }
+    }
+
+    private func migrateToV2() {
+        exec("""
+        CREATE TABLE IF NOT EXISTS categories (
+            id            TEXT NOT NULL UNIQUE,
+            name          TEXT NOT NULL,
+            color_hex     TEXT NOT NULL DEFAULT '#F59E0B',
+            is_collecting INTEGER NOT NULL DEFAULT 0,
+            sort_order    INTEGER NOT NULL DEFAULT 0
+        );
+        ALTER TABLE items ADD COLUMN category_id TEXT;
+        CREATE INDEX IF NOT EXISTS idx_items_category ON items(category_id) WHERE category_id IS NOT NULL;
+        PRAGMA user_version = 2;
+        """)
+    }
+
+    private func migrateToV1() {
         exec("""
         CREATE TABLE IF NOT EXISTS items (
             id            TEXT NOT NULL UNIQUE,
@@ -224,8 +243,8 @@ final class SQLiteStore {
 
         run("""
         INSERT INTO items (id, kind, text, image_data, image_path, file_paths, content_hash,
-                           copied_at, pinned, source_bundle, source_name, rtf, html, link_title, link_icon)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                           copied_at, pinned, source_bundle, source_name, rtf, html, link_title, link_icon, category_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, [
             .text(item.id.uuidString), .int(kind), .textOpt(text),
             .blobOpt(imageBlob), .textOpt(imagePath), .textOpt(filePathsJSON),
@@ -234,6 +253,7 @@ final class SQLiteStore {
             .textOpt(item.sourceAppBundleID), .textOpt(item.sourceAppName),
             .blobOpt(item.rtfData), .blobOpt(item.htmlData),
             .textOpt(item.linkTitle), .blobOpt(item.linkIconPNG),
+            .textOpt(item.categoryID?.uuidString),
         ])
         return stored
     }
@@ -245,6 +265,78 @@ final class SQLiteStore {
     func setLinkMetadata(id: UUID, title: String?, iconPNG: Data?) {
         run("UPDATE items SET link_title = ?, link_icon = ? WHERE id = ?",
             [.textOpt(title), .blobOpt(iconPNG), .text(id.uuidString)])
+    }
+
+    /// Quick edit: replace a text item's content in place. Recomputes the
+    /// content hash; the FTS index updates via trigger. If editing makes the
+    /// text identical to another existing item, the edit still wins — the
+    /// other row keeps its own identity (hash uniqueness is relaxed to
+    /// "best effort" here by suffixing on conflict).
+    func updateText(id: UUID, newText: String) {
+        var probe = ClipboardItem(content: .text(newText))
+        probe.restoreIdentity(id: id, copiedAt: Date(), isPinned: false)
+        var hash = Self.contentHash(of: probe)
+        if let clash = fetchOne(where: "content_hash = ? AND id != ?",
+                                binds: [.text(hash), .text(id.uuidString)]), clash.id != id {
+            hash += "-edited-" + id.uuidString.prefix(8)
+        }
+        run("UPDATE items SET text = ?, content_hash = ?, rtf = NULL, html = NULL, link_title = NULL, link_icon = NULL WHERE id = ?",
+            [.text(newText), .text(hash), .text(id.uuidString)])
+    }
+
+    // MARK: - Categories
+
+    func setCategory(itemID: UUID, categoryID: UUID?) {
+        run("UPDATE items SET category_id = ? WHERE id = ?",
+            [.textOpt(categoryID?.uuidString), .text(itemID.uuidString)])
+    }
+
+    func fetchCategories() -> [ClipCategory] {
+        var out: [ClipCategory] = []
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT id, name, color_hex, is_collecting, sort_order FROM categories ORDER BY sort_order, name", -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let idC = sqlite3_column_text(stmt, 0),
+                  let id = UUID(uuidString: String(cString: idC)),
+                  let nameC = sqlite3_column_text(stmt, 1),
+                  let colorC = sqlite3_column_text(stmt, 2) else { continue }
+            out.append(ClipCategory(id: id,
+                                    name: String(cString: nameC),
+                                    colorHex: String(cString: colorC),
+                                    isCollecting: sqlite3_column_int(stmt, 3) == 1,
+                                    sortOrder: Int(sqlite3_column_int(stmt, 4))))
+        }
+        return out
+    }
+
+    func saveCategory(_ category: ClipCategory) {
+        run("""
+        INSERT INTO categories (id, name, color_hex, is_collecting, sort_order)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name, color_hex = excluded.color_hex,
+            is_collecting = excluded.is_collecting, sort_order = excluded.sort_order
+        """, [.text(category.id.uuidString), .text(category.name), .text(category.colorHex),
+              .int(category.isCollecting ? 1 : 0), .int(category.sortOrder)])
+    }
+
+    /// Only one category may collect at a time.
+    func setCollecting(categoryID: UUID?) {
+        run("UPDATE categories SET is_collecting = 0", [])
+        if let categoryID {
+            run("UPDATE categories SET is_collecting = 1 WHERE id = ?", [.text(categoryID.uuidString)])
+        }
+    }
+
+    func deleteCategory(id: UUID) {
+        run("UPDATE items SET category_id = NULL WHERE category_id = ?", [.text(id.uuidString)])
+        run("DELETE FROM categories WHERE id = ?", [.text(id.uuidString)])
+    }
+
+    func fetchItems(categoryID: UUID, limit: Int = 2_000) -> [ClipboardItem] {
+        query("SELECT * FROM items WHERE category_id = ? ORDER BY pinned DESC, copied_at DESC LIMIT ?",
+              [.text(categoryID.uuidString), .int(limit)])
     }
 
     func delete(id: UUID) {
@@ -404,6 +496,10 @@ final class SQLiteStore {
         item.imageFile = text(4)
         item.linkTitle = text(13)
         item.linkIconPNG = blob(14)
+        // category_id was added in schema v2 as column 15.
+        if sqlite3_column_count(stmt) > 15, let cat = text(15) {
+            item.categoryID = UUID(uuidString: cat)
+        }
         return item
     }
 

@@ -124,22 +124,16 @@ enum Paster {
         let blocking: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
         let vStillDown = CGEventSource.keyState(.combinedSessionState, key: 9) // kVK_ANSI_V
         if (!flags.intersection(blocking).isEmpty || vStillDown), attemptsLeft > 0 {
-            if attemptsLeft == 30 {
-                NSLog("CLIP-TRACE: waiting for key release (flags raw = \(flags.rawValue), vDown = \(vStillDown))")
-            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 sendCmdV(attemptsLeft: attemptsLeft - 1)
             }
             return
         }
-        NSLog("CLIP-TRACE: keys released after \(30 - attemptsLeft) waits — posting Cmd+V")
         postCmdV()
     }
 
     private static func postCmdV() {
-        let trusted = accessibilityGranted(promptIfNeeded: true)
-        NSLog("CLIP-TRACE: accessibility trusted = \(trusted)")
-        guard trusted else { return }
+        guard accessibilityGranted(promptIfNeeded: true) else { return }
         let src = CGEventSource(stateID: .combinedSessionState)
         // 9 = kVK_ANSI_V
         let down = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true)

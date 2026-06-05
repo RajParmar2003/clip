@@ -268,6 +268,10 @@ final class ClipboardStore: ObservableObject {
             }
             // Re-copying trashed content rescues it; keep the badge accurate.
             self.trashCount = self.engine.trashCount()
+
+            // A real copy means the user's intent changed — lets the paste
+            // queue cancel its session.
+            NotificationCenter.default.post(name: .clipExternalCopy, object: nil)
         }
     }
 

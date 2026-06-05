@@ -24,16 +24,34 @@ final class ScreenshotWatcher {
     private var started = false
     private var initialGatherDone = false
     private var seenPaths = Set<String>()
+    private var startDate = Date()
+    private var folderSource: DispatchSourceFileSystemObject?
+    private var folderFD: Int32 = -1
     private let log = Logger(subsystem: "com.rajparmar.Clip", category: "screenshots")
 
     init(store: ClipboardStore) {
         self.store = store
     }
 
+    /// Where macOS saves screenshots: the user's configured location
+    /// (`defaults write com.apple.screencapture location`) or ~/Desktop.
+    static func screenshotsDirectory() -> URL {
+        if let custom = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location") {
+            let expanded = (custom as NSString).expandingTildeInPath
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), isDir.boolValue {
+                return URL(fileURLWithPath: expanded)
+            }
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
+    }
+
     func start() {
         guard !started else { return }
         started = true
+        startDate = Date()
 
+        // Primary: Spotlight metadata (path- and locale-independent).
         query.predicate = NSPredicate(format: "kMDItemIsScreenCapture == 1")
         query.searchScopes = [NSMetadataQueryUserHomeScope]
         query.notificationBatchingInterval = 0.5
@@ -47,6 +65,13 @@ final class ScreenshotWatcher {
         if !query.start() {
             log.error("screenshot metadata query failed to start — Spotlight may be disabled")
         }
+
+        // Fallback + consent trigger: watch the screenshots folder directly.
+        // Spotlight silently hides TCC-protected folders (Desktop!) until the
+        // user grants access, and the grant is only prompted by an actual
+        // read — so we read immediately and watch the directory ourselves.
+        startFolderWatch()
+        scanFolder() // first read = macOS shows the folder-access prompt now
     }
 
     func stop() {
@@ -55,6 +80,54 @@ final class ScreenshotWatcher {
         initialGatherDone = false
         query.stop()
         NotificationCenter.default.removeObserver(self)
+        folderSource?.cancel()
+        folderSource = nil
+        if folderFD >= 0 { close(folderFD) }
+        folderFD = -1
+    }
+
+    // MARK: - Folder watch (fallback path)
+
+    private func startFolderWatch() {
+        let dir = Self.screenshotsDirectory()
+        folderFD = open(dir.path, O_EVTONLY)
+        guard folderFD >= 0 else {
+            log.warning("cannot open screenshots folder for watching: \(dir.path, privacy: .public)")
+            return
+        }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: folderFD, eventMask: .write, queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            // Let the screenshot file finish writing before reading.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                self?.scanFolder()
+            }
+        }
+        source.resume()
+        folderSource = source
+        log.info("watching screenshots folder: \(dir.path, privacy: .public)")
+    }
+
+    /// Looks for image files that appeared after the watcher started.
+    private func scanFolder() {
+        guard started else { return }
+        let dir = Self.screenshotsDirectory()
+        let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff"]
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.creationDateKey], options: [.skipsHiddenFiles]
+        ) else {
+            log.warning("cannot list screenshots folder (permission pending or denied)")
+            return
+        }
+        for file in files {
+            guard imageExtensions.contains(file.pathExtension.lowercased()),
+                  !seenPaths.contains(file.path) else { continue }
+            let created = (try? file.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            guard created > startDate else { continue }
+            seenPaths.insert(file.path)
+            ingest(path: file.path, retriesLeft: 3)
+        }
     }
 
     /// The initial gather returns every screenshot that already exists —

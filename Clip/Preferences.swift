@@ -28,6 +28,8 @@ final class Preferences: ObservableObject {
         static let ocrImages = "ocrImages"
         static let captureScreenshots = "captureScreenshots"
         static let screenshotAutoCopy = "screenshotAutoCopy"
+        static let screenshotAutoFile = "screenshotAutoFile"
+        static let screenshotDeleteFile = "screenshotDeleteFile"
     }
 
     private init() {
@@ -53,7 +55,22 @@ final class Preferences: ObservableObject {
             // so this ships off until the user turns it on knowingly.
             Keys.captureScreenshots: false,
             Keys.screenshotAutoCopy: false,
+            Keys.screenshotAutoFile: false,
+            Keys.screenshotDeleteFile: false,
         ])
+    }
+
+    /// File captured screenshots into a "Screenshots" category automatically.
+    var screenshotAutoFile: Bool {
+        get { defaults.bool(forKey: Keys.screenshotAutoFile) }
+        set { defaults.set(newValue, forKey: Keys.screenshotAutoFile); objectWillChange.send() }
+    }
+
+    /// After capturing a screenshot into Clip, delete the file from disk —
+    /// for people who screenshot only to paste, keeping the Desktop clean.
+    var screenshotDeleteFile: Bool {
+        get { defaults.bool(forKey: Keys.screenshotDeleteFile) }
+        set { defaults.set(newValue, forKey: Keys.screenshotDeleteFile); objectWillChange.send() }
     }
 
     var captureScreenshots: Bool {

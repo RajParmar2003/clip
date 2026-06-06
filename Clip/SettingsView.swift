@@ -76,6 +76,19 @@ private struct GeneralSettings: View {
                 Text("Take a screenshot, press paste — it's already there.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Toggle("File screenshots into a \"Screenshots\" category", isOn: Binding(
+                    get: { prefs.screenshotAutoFile },
+                    set: { prefs.screenshotAutoFile = $0 }
+                ))
+
+                Toggle("Delete the screenshot file after capturing it", isOn: Binding(
+                    get: { prefs.screenshotDeleteFile },
+                    set: { prefs.screenshotDeleteFile = $0 }
+                ))
+                Text("For when you screenshot only to paste — the image stays in Clip, but the file is removed so your desktop stays clean.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

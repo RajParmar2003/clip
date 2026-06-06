@@ -60,6 +60,21 @@ private struct GeneralSettings: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            ScreenshotSettings(prefs: prefs)
+        }
+        .formStyle(.grouped)
+        .padding(.top, 8)
+    }
+}
+
+// MARK: - Screenshot settings (own view so the parent Form stays under the
+// SwiftUI ViewBuilder child-count ceiling)
+
+private struct ScreenshotSettings: View {
+    @ObservedObject var prefs: Preferences
+
+    var body: some View {
+        Section("Screenshots") {
             Toggle("Capture screenshots I take", isOn: Binding(
                 get: { prefs.captureScreenshots },
                 set: { prefs.captureScreenshots = $0 }
@@ -73,26 +88,19 @@ private struct GeneralSettings: View {
                     get: { prefs.screenshotAutoCopy },
                     set: { prefs.screenshotAutoCopy = $0 }
                 ))
-                Text("Take a screenshot, press paste — it's already there.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 Toggle("File screenshots into a \"Screenshots\" category", isOn: Binding(
                     get: { prefs.screenshotAutoFile },
                     set: { prefs.screenshotAutoFile = $0 }
                 ))
-
                 Toggle("Delete the screenshot file after capturing it", isOn: Binding(
                     get: { prefs.screenshotDeleteFile },
                     set: { prefs.screenshotDeleteFile = $0 }
                 ))
-                Text("For when you screenshot only to paste — the image stays in Clip, but the file is removed so your desktop stays clean.")
+                Text("Delete is for when you screenshot only to paste — the image stays in Clip, but the file is removed so your desktop stays clean.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
-        .padding(.top, 8)
     }
 }
 

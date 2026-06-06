@@ -84,6 +84,25 @@ Every screenshot you take lands in Clip's history instantly — no Command-C req
 5. **Smart behaviors once captured:** option to auto-copy the screenshot to the clipboard (take screenshot → it's already pasteable), OCR it on arrival (Phase 4 engine) so screenshots are text-searchable from the moment they exist, auto-file into a "Screenshots" category, and a setting to capture-then-delete-the-file for users who screenshot only to paste.
 6. **Version-proofing:** a small compatibility layer isolates everything Apple could change (attribute name, thumbnail timing, default location), with a startup self-test that takes no action but verifies the query fires on the current OS; if Apple breaks something in macOS 27, Clip degrades to folder-watching and tells the user instead of silently failing.
 
+## Phase 7 — Performance hardening (v0.7.0)
+
+For the technical user who refuses to run an app that hogs CPU or RAM. The thesis: a menu-bar utility should be invisible in Activity Monitor. This phase is measure-then-fix — no optimization without a number behind it.
+
+**Part A — Instrumentation and measurement (build the ruler first).**
+
+1. **PID-tracked profiling harness.** A script/tool that pins Clip's process ID and samples its resource usage continuously while a human (or scripted driver) runs the TESTING.md regression pass end to end. Five tracked metrics, the same ones Xcode's gauges and Activity Monitor expose: **CPU %, memory (resident + footprint), energy impact, disk I/O, network**. Sampling via `ps`/`top` against the PID, plus Xcode Instruments (Time Profiler, Allocations, Leaks, Energy Log) for the deep passes.
+2. **Per-scenario attribution.** Don't just get one average — break numbers down by what the app is doing: idle (the most important — a clipboard manager is idle 99% of the time), popup open, active search at 100k items, image/OCR capture, screenshot ingest, paste-queue session, retention sweep. Each TESTING.md section gets a resource profile so we know exactly which feature costs what.
+3. **Baseline + budgets.** Record a v0.6.x baseline, then set hard budgets and treat regressions as bugs: idle CPU effectively 0% (no busy-wait), idle memory target (lean for a menu-bar app), popup open under 100ms even at 100k items (already a checkpoint), no measurable network at rest (only the opt-in link-preview feature may ever touch the network), bounded disk writes (no thrashing the SQLite file on every poll).
+4. **Leak and growth detection.** Run the app for an extended session and assert memory doesn't creep — catch retain cycles, unbounded caches, image data held longer than needed, observers never removed.
+
+**Part B — Actual optimization (fix against the measurements).**
+
+5. **Idle cost.** Audit the 200ms pasteboard poll loop — the single always-on cost. Confirm it does nothing but compare an Int when nothing changed; widen the interval or use a smarter trigger if the profiler shows it waking the CPU. The menu-bar app must let the Mac sleep its cores.
+6. **Memory discipline.** Working-set sizing, image thumbnail vs. full-resolution residency, releasing OCR/Vision buffers promptly, lazy-loading rows, and making sure the unlimited history never means unlimited RAM.
+7. **Disk efficiency.** Batch and debounce SQLite writes, verify WAL checkpointing behaves, confirm VACUUM/retention sweeps run off the main thread and not on a hot path.
+8. **Energy.** Coalesce timers, avoid unnecessary main-thread work, ensure background tasks (OCR, link fetch, metadata query) use appropriate QoS so they don't spin up performance cores.
+9. **Published results.** A short PERFORMANCE.md with the before/after numbers — the kind of table a skeptical Hacker News commenter would respect — and the budgets baked into the regression checklist so future phases can't quietly regress them.
+
 ---
 
 ## Explicit non-goals
@@ -122,7 +141,10 @@ Minor version = phase. Patch version = fixes within that phase. v1.0.0 is reserv
 | v0.3.0 | Phase 3 — favorites, categories, collect mode | planned |
 | v0.4.0 | Phase 4 — power tier: queue, transforms, OCR, per-clip hotkeys | planned |
 | v0.5.0 | Phase 5 — screenshot integration + clipboard inspector | next |
+| v0.5.x | Power extras: per-clip hotkeys, snippets, CLI | in progress |
 | v0.6.0 | Phase 6 — reach: opt-in sync, iOS companion, on-device AI | planned |
+| v0.7.0 | Phase 7 — performance hardening: PID profiling + optimization | planned |
+| v0.7.x | Performance fixes against measured budgets | as needed |
 | v1.0.0 | First public release: notarized .dmg, website, announcement | when ready |
 
 A phase with no open fixes is simply done — we move on; no empty patch releases.

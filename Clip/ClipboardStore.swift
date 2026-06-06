@@ -54,6 +54,19 @@ final class ClipboardStore: ObservableObject {
         categories = engine.fetchCategories()
     }
 
+    /// Returns the auto-managed "Screenshots" category, creating it once if
+    /// needed. Used when screenshot auto-filing is enabled.
+    func screenshotsCategory() -> ClipCategory {
+        if let existing = categories.first(where: { $0.name == "Screenshots" }) {
+            return existing
+        }
+        let category = ClipCategory(name: "Screenshots", colorHex: "#3B82F6",
+                                    sortOrder: (categories.map(\.sortOrder).max() ?? 0) + 1)
+        engine.saveCategory(category)
+        categories = engine.fetchCategories()
+        return categories.first(where: { $0.id == category.id }) ?? category
+    }
+
     func renameCategory(_ category: ClipCategory, to name: String) {
         var updated = category
         updated.name = name
@@ -214,20 +227,35 @@ final class ClipboardStore: ObservableObject {
     static let maxImageBytes = 10_000_000
 
     /// Screenshot watcher entry point: file lands in history (dedup-aware via
-    /// content hash, OCR runs automatically) and optionally onto the clipboard.
-    func addScreenshot(png: Data) {
+    /// content hash, OCR runs automatically), optionally onto the clipboard,
+    /// optionally filed into the Screenshots category, and the source file is
+    /// optionally deleted afterward. `sourceFile` is the on-disk path (for the
+    /// delete option); nil when the screenshot came via the pasteboard.
+    func addScreenshot(png: Data, sourceFile: URL? = nil) {
         // Honor the same gates as normal image capture: respect the image
         // toggle and the shared size cap, so screenshots aren't a back door.
         guard Preferences.shared.captureImages, png.count <= Self.maxImageBytes else { return }
 
-        let item = ClipboardItem(content: .image(png), sourceAppName: "Screenshot")
+        let prefs = Preferences.shared
+        let category = prefs.screenshotAutoFile ? screenshotsCategory() : nil
+
+        var item = ClipboardItem(content: .image(png), sourceAppName: "Screenshot")
+        item.categoryID = category?.id
         add(item)
-        if Preferences.shared.screenshotAutoCopy {
+
+        if prefs.screenshotAutoCopy {
             ignoreNextChange = true
             let pb = NSPasteboard.general
             pb.clearContents()
             pb.setData(png, forType: .png)
             currentClipboard = summarize(pb)
+        }
+
+        // Capture-then-delete: the image is safely in history, so remove the
+        // file for users who screenshot only to paste. Never deletes if it
+        // also can't be captured (the guard above already returned).
+        if prefs.screenshotDeleteFile, let sourceFile {
+            try? FileManager.default.removeItem(at: sourceFile)
         }
     }
 

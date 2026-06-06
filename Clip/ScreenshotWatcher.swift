@@ -63,9 +63,16 @@ final class ScreenshotWatcher {
         center.addObserver(self, selector: #selector(queryUpdated),
                            name: .NSMetadataQueryDidUpdate, object: query)
 
-        if !query.start() {
+        let metadataStarted = query.start()
+        if !metadataStarted {
             log.error("screenshot metadata query failed to start — Spotlight may be disabled")
         }
+        // Version-proofing self-test: if the metadata path doesn't become
+        // ready shortly (Apple changed the attribute, Spotlight off, etc.),
+        // note that we're running on the folder-watch fallback. The fallback
+        // is always installed below, so capture keeps working either way —
+        // this just records which path is live for diagnostics and the UI.
+        scheduleSelfTest(metadataStarted: metadataStarted)
 
         // Fallback + consent trigger: watch the screenshots folder directly.
         // Spotlight silently hides TCC-protected folders (Desktop!) until the
@@ -79,6 +86,7 @@ final class ScreenshotWatcher {
         guard started else { return }
         started = false
         initialGatherDone = false
+        metadataPathHealthy = false
         query.stop()
         NotificationCenter.default.removeObserver(self)
         folderSource?.cancel()
@@ -157,12 +165,30 @@ final class ScreenshotWatcher {
         seenPaths.insert(key)
     }
 
+    /// Whether the primary (Spotlight metadata) path is confirmed working.
+    /// When false, capture relies on the folder-watch fallback.
+    private(set) var metadataPathHealthy = false
+
     /// The initial gather returns every screenshot that already exists —
     /// history we must not import. Only post-gather additions are new.
     @objc private func gatherFinished(_ note: Notification) {
         initialGatherDone = true
+        metadataPathHealthy = true
         query.enableUpdates()
-        log.info("screenshot watcher ready (\(self.query.resultCount) existing screenshots indexed)")
+        log.info("screenshot watcher ready via Spotlight (\(self.query.resultCount) existing screenshots indexed)")
+    }
+
+    /// If the metadata query hasn't reported its initial gather within a few
+    /// seconds, the primary path is unavailable on this OS/config. The
+    /// folder-watch fallback (started in start()) covers us; we just log it so
+    /// a future macOS change degrades loudly-in-diagnostics, not silently.
+    private func scheduleSelfTest(metadataStarted: Bool) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self, self.started else { return }
+            if !self.metadataPathHealthy {
+                self.log.warning("screenshot metadata path unavailable — using folder-watch fallback (Spotlight off, or kMDItemIsScreenCapture changed)")
+            }
+        }
     }
 
     @objc private func queryUpdated(_ note: Notification) {
@@ -209,7 +235,8 @@ final class ScreenshotWatcher {
         // a generous pre-filter here just avoids decoding absurd files.
         guard png.count <= 60_000_000 else { return }
 
-        store?.addScreenshot(png: png)
+        // Pass the source file so the store can honor capture-then-delete.
+        store?.addScreenshot(png: png, sourceFile: url)
         log.info("captured screenshot (\(png.count) bytes)")
     }
 }

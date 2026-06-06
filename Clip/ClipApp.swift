@@ -61,6 +61,7 @@ extension Notification.Name {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let clipboardStore = ClipboardStore()
     private(set) lazy var pasteQueue = PasteQueue(store: clipboardStore)
+    private(set) lazy var quickPaste = QuickPasteHotKeys(store: clipboardStore)
     private var statusItem: NSStatusItem!
     private var panelController: PanelController!
     private var mainWindowController: MainWindowController!
@@ -96,8 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
         }
 
-        panelController = PanelController(store: clipboardStore, queue: pasteQueue)
-        mainWindowController = MainWindowController(store: clipboardStore, queue: pasteQueue)
+        _ = quickPaste // instantiate so its hotkeys register at launch
+        panelController = PanelController(store: clipboardStore, queue: pasteQueue, quickPaste: quickPaste)
+        mainWindowController = MainWindowController(store: clipboardStore, queue: pasteQueue, quickPaste: quickPaste)
         clipboardStore.startMonitoring()
         registerHotKey()
 

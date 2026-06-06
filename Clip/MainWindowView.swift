@@ -43,6 +43,7 @@ struct MainWindowView: View {
     @ObservedObject var store: ClipboardStore
     let controller: MainWindowController
     @ObservedObject var queue: PasteQueue
+    @ObservedObject var quickPaste: QuickPasteHotKeys
 
     @State private var query = ""
     @State private var selection: SidebarSelection = .filter(.all)
@@ -199,6 +200,9 @@ struct MainWindowView: View {
                         itemCategory: store.categories.first { $0.id == item.categoryID },
                         isMultiSelected: selectedIDs.contains(item.id),
                         isQueued: queue.contains(item),
+                        quickSlot: quickPaste.slot(for: item.id),
+                        onAssignSlot: { quickPaste.assign(slot: $0, itemID: item.id) },
+                        onClearSlot: { if let s = quickPaste.slot(for: item.id) { quickPaste.assign(slot: s, itemID: nil) } },
                         onPaste: { controller.select(item, plainTextOnly: false) },
                         onPastePlain: { controller.select(item, plainTextOnly: true) },
                         onPasteTransformed: { controller.selectTransformed(item, transform: $0) },
@@ -337,6 +341,9 @@ private struct MainItemRow: View {
     let itemCategory: ClipCategory?
     let isMultiSelected: Bool
     let isQueued: Bool
+    let quickSlot: Int?
+    let onAssignSlot: (Int) -> Void
+    let onClearSlot: () -> Void
     let onPaste: () -> Void
     let onPastePlain: () -> Void
     let onPasteTransformed: (TextTransform) -> Void
@@ -396,6 +403,7 @@ private struct MainItemRow: View {
                         }
                         Divider()
                         Button(isQueued ? "Remove from Paste Queue" : "Add to Paste Queue") { onToggleQueue() }
+                        quickPasteMenu
                         Button(item.isPinned ? "Unpin" : "Pin") { onPin() }
                         categoryMenu
                         if let url = item.asURL {
@@ -411,6 +419,14 @@ private struct MainItemRow: View {
                     .help("More actions")
                 }
             } else {
+                if let slot = quickSlot {
+                    Text("⌃⌥\(slot + 1)")
+                        .font(.caption2.monospaced())
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(Color.purple.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
+                        .foregroundStyle(.purple)
+                        .help("Quick-paste shortcut")
+                }
                 if isQueued {
                     Image(systemName: "text.line.first.and.arrowtriangle.forward")
                         .font(.caption)
@@ -454,6 +470,7 @@ private struct MainItemRow: View {
             if isEditableText { Button("Edit…") { onEdit() } }
             Divider()
             Button(isQueued ? "Remove from Paste Queue" : "Add to Paste Queue") { onToggleQueue() }
+            quickPasteMenu
             Button(item.isPinned ? "Unpin" : "Pin") { onPin() }
             categoryMenu
             Divider()
@@ -469,6 +486,27 @@ private struct MainItemRow: View {
                 ForEach(TextTransform.allCases) { transform in
                     Button(transform.rawValue) { onPasteTransformed(transform) }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var quickPasteMenu: some View {
+        Menu("Quick-Paste Shortcut") {
+            ForEach(0..<9, id: \.self) { slot in
+                Button {
+                    onAssignSlot(slot)
+                } label: {
+                    if quickSlot == slot {
+                        Label("Control+Option+\(slot + 1)", systemImage: "checkmark")
+                    } else {
+                        Text("Control+Option+\(slot + 1)")
+                    }
+                }
+            }
+            if quickSlot != nil {
+                Divider()
+                Button("Remove Shortcut") { onClearSlot() }
             }
         }
     }

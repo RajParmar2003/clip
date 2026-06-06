@@ -7,12 +7,14 @@ final class MainWindowController: NSObject, NSWindowDelegate, ObservableObject {
     private var window: NSWindow?
     private let store: ClipboardStore
     let queue: PasteQueue
+    let quickPaste: QuickPasteHotKeys
     /// App that was frontmost before this window took focus — the paste target.
     private(set) var previousApp: NSRunningApplication?
 
-    init(store: ClipboardStore, queue: PasteQueue) {
+    init(store: ClipboardStore, queue: PasteQueue, quickPaste: QuickPasteHotKeys) {
         self.store = store
         self.queue = queue
+        self.quickPaste = quickPaste
         super.init()
     }
 
@@ -45,7 +47,7 @@ final class MainWindowController: NSObject, NSWindowDelegate, ObservableObject {
             w.setFrameAutosaveName("ClipMainWindow")
             w.delegate = self
             w.contentView = NSHostingView(
-                rootView: MainWindowView(store: store, controller: self, queue: queue)
+                rootView: MainWindowView(store: store, controller: self, queue: queue, quickPaste: quickPaste)
             )
             window = w
         }

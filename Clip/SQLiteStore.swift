@@ -407,6 +407,10 @@ final class SQLiteStore {
               [.text(categoryID.uuidString), .int(limit)])
     }
 
+    func fetchItem(id: UUID) -> ClipboardItem? {
+        fetchOne(where: "id = ? AND deleted_at IS NULL", binds: [.text(id.uuidString)])
+    }
+
     /// Soft delete: moves the item to the Trash. Image files stay on disk
     /// until the trash entry is purged.
     func delete(id: UUID) {

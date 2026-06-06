@@ -220,12 +220,36 @@ final class SQLiteStore {
             hasher.update(data: Data(s.utf8))
         case .image(let d):
             hasher.update(data: Data("i:".utf8))
-            hasher.update(data: d)
+            // Hash decoded pixels, not encoded bytes, so the same screenshot
+            // dedupes whether it arrives as a file-mode PNG or a re-encoded
+            // JPG/HEIC or the pasteboard variant. Falls back to raw bytes if
+            // the image can't be decoded.
+            hasher.update(data: pixelDigest(of: d) ?? d)
         case .fileURLs(let paths):
             hasher.update(data: Data("f:".utf8))
             hasher.update(data: Data(paths.joined(separator: "\u{0}").utf8))
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Encoding-independent fingerprint of an image: decode, downscale to a
+    /// fixed 64×64 RGBA grid, return those raw pixels. Two encodings of the
+    /// same picture produce the same digest; genuinely different images don't.
+    private static func pixelDigest(of data: Data) -> Data? {
+        guard let image = NSImage(data: data) else { return nil }
+        let side = 64
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: side * 4, bitsPerPixel: 32
+        ) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(x: 0, y: 0, width: side, height: side),
+                   from: .zero, operation: .copy, fraction: 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let ptr = rep.bitmapData else { return nil }
+        return Data(bytes: ptr, count: side * side * 4)
     }
 
     /// For large images: write full PNG to a content-addressed file, return

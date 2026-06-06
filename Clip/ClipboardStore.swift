@@ -209,9 +209,17 @@ final class ClipboardStore: ObservableObject {
         currentClipboard = nil
     }
 
+    /// Largest image (in bytes) Clip will store — shared by pasteboard image
+    /// capture and screenshot capture so behavior is consistent.
+    static let maxImageBytes = 10_000_000
+
     /// Screenshot watcher entry point: file lands in history (dedup-aware via
     /// content hash, OCR runs automatically) and optionally onto the clipboard.
     func addScreenshot(png: Data) {
+        // Honor the same gates as normal image capture: respect the image
+        // toggle and the shared size cap, so screenshots aren't a back door.
+        guard Preferences.shared.captureImages, png.count <= Self.maxImageBytes else { return }
+
         let item = ClipboardItem(content: .image(png), sourceAppName: "Screenshot")
         add(item)
         if Preferences.shared.screenshotAutoCopy {
@@ -289,8 +297,8 @@ final class ClipboardStore: ObservableObject {
             } else {
                 return nil
             }
-            // Cap stored image size at 10 MB to keep history file sane.
-            guard png.count <= 10_000_000 else { return nil }
+            // Cap stored image size to keep history file sane (shared cap).
+            guard png.count <= Self.maxImageBytes else { return nil }
             return ClipboardItem(content: .image(png),
                                  sourceAppBundleID: bundleID, sourceAppName: appName)
         }

@@ -84,6 +84,12 @@ final class ClipboardStore: ObservableObject {
         engine.fetchItems(categoryID: category.id)
     }
 
+    /// Look up a single live item (used by quick-paste hotkeys). Checks the
+    /// in-memory working set first, falls back to the database.
+    func item(withID id: UUID) -> ClipboardItem? {
+        items.first { $0.id == id } ?? engine.fetchItem(id: id)
+    }
+
     /// Quick edit: rewrite a text item's content before pasting it.
     func updateText(_ item: ClipboardItem, to newText: String) {
         engine.updateText(id: item.id, newText: newText)

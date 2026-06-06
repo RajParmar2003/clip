@@ -6,6 +6,7 @@ struct HistoryPanelView: View {
     @ObservedObject var store: ClipboardStore
     @ObservedObject var controller: PanelController
     @ObservedObject var queue: PasteQueue
+    @ObservedObject var quickPaste: QuickPasteHotKeys
 
     @State private var query = ""
     @State private var selectedIndex = 0
@@ -98,6 +99,23 @@ struct HistoryPanelView: View {
                                 }
                                 Button(queue.contains(item) ? "Remove from Paste Queue" : "Add to Paste Queue") {
                                     queue.contains(item) ? queue.remove(item) : queue.enqueue(item)
+                                }
+                                Menu("Quick-Paste Shortcut") {
+                                    ForEach(0..<9, id: \.self) { slot in
+                                        Button {
+                                            quickPaste.assign(slot: slot, itemID: item.id)
+                                        } label: {
+                                            if quickPaste.slot(for: item.id) == slot {
+                                                Label("Control+Option+\(slot + 1)", systemImage: "checkmark")
+                                            } else {
+                                                Text("Control+Option+\(slot + 1)")
+                                            }
+                                        }
+                                    }
+                                    if let s = quickPaste.slot(for: item.id) {
+                                        Divider()
+                                        Button("Remove Shortcut") { quickPaste.assign(slot: s, itemID: nil) }
+                                    }
                                 }
                                 if !store.categories.isEmpty {
                                     Menu("Add to Category") {

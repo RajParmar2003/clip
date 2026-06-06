@@ -8,15 +8,17 @@ final class PanelController: NSObject, NSWindowDelegate, ObservableObject {
     private var panel: NSPanel!
     private let store: ClipboardStore
     let queue: PasteQueue
+    let quickPaste: QuickPasteHotKeys
     /// The app that was frontmost before the panel opened — paste target.
     private(set) var previousApp: NSRunningApplication?
     /// Bumped on every show() so the SwiftUI view resets search/selection/focus
     /// (onAppear only fires once because orderOut doesn't tear the view down).
     @Published private(set) var showGeneration = 0
 
-    init(store: ClipboardStore, queue: PasteQueue) {
+    init(store: ClipboardStore, queue: PasteQueue, quickPaste: QuickPasteHotKeys) {
         self.store = store
         self.queue = queue
+        self.quickPaste = quickPaste
         super.init()
         buildPanel()
     }
@@ -53,7 +55,7 @@ final class PanelController: NSObject, NSWindowDelegate, ObservableObject {
         panel.hasShadow = true
         panel.delegate = self
 
-        let root = HistoryPanelView(store: store, controller: self, queue: queue)
+        let root = HistoryPanelView(store: store, controller: self, queue: queue, quickPaste: quickPaste)
         let hosting = NSHostingView(rootView: root)
         panel.contentView = hosting
     }

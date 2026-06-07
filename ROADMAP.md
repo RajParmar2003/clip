@@ -64,7 +64,9 @@ Research: these are the features that remain genuinely power-exclusive across th
 5b. **Current-clipboard inspector** (requested): a pinned strip at the top of the popup and window showing exactly what's on the system clipboard *right now* — type, preview, size, source app — so you always know what ⌘V is about to paste before you paste it. Includes a "clear clipboard" action.
 6. **Scripting surface**: a small CLI (`clip list`, `clip get N`, `clip search`) and Shortcuts.app actions. Power users on HN consistently reward scriptability with loyalty.
 
-## Phase 6 — Reach (the honest trade-offs)
+## Phase 7 — Reach (optional / future — the honest trade-offs)
+
+Deliberately deprioritized to last and marked optional. Unlike every other phase, each item here depends on something outside the code (an iCloud entitlement, a second app target, a specific macOS version) and carries data-corruption risk that the rest of the app doesn't. Build only if real users ask for multi-device sync — performance (Phase 6) and the v1.0.0 release deliver more value at far less risk first.
 
 1. **Optional iCloud sync** — off by default, loudly labeled, favorites-only mode available (the CopyLess model), full-history mode for those who opt in. Research is two-sided here: sync is both the most-requested feature (Maccy #182) *and* the most-distrusted ("I don't trust a 'secure' product that defaults to unsafe behavior" — HN on Paste). Default-off with Apple's E2E iCloud is the only stance consistent with our privacy thesis.
 2. **iOS companion** (favorites + recent history via that opt-in sync). Pastebot's most-mourned gap.
@@ -84,7 +86,7 @@ Every screenshot you take lands in Clip's history instantly — no Command-C req
 5. **Smart behaviors once captured:** option to auto-copy the screenshot to the clipboard (take screenshot → it's already pasteable), OCR it on arrival (Phase 4 engine) so screenshots are text-searchable from the moment they exist, auto-file into a "Screenshots" category, and a setting to capture-then-delete-the-file for users who screenshot only to paste.
 6. **Version-proofing:** a small compatibility layer isolates everything Apple could change (attribute name, thumbnail timing, default location), with a startup self-test that takes no action but verifies the query fires on the current OS; if Apple breaks something in macOS 27, Clip degrades to folder-watching and tells the user instead of silently failing.
 
-## Phase 7 — Performance hardening (v0.7.0)
+## Phase 6 — Performance hardening (v0.6.0)
 
 For the technical user who refuses to run an app that hogs CPU or RAM. The thesis: a menu-bar utility should be invisible in Activity Monitor. This phase is measure-then-fix — no optimization without a number behind it.
 
@@ -142,8 +144,8 @@ Minor version = phase. Patch version = fixes within that phase. v1.0.0 is reserv
 | v0.4.0 | Phase 4 — power tier: queue, transforms, OCR, per-clip hotkeys | planned |
 | v0.5.0 | Phase 5 — screenshot integration + clipboard inspector | next |
 | v0.5.x | Power extras: per-clip hotkeys, snippets, CLI | in progress |
-| v0.6.0 | Phase 6 — reach: opt-in sync, iOS companion, on-device AI | planned |
-| v0.7.0 | Phase 7 — performance hardening: PID profiling + optimization | planned |
+| v0.6.0 | Phase 6 — performance hardening: PID profiling + optimization | next |
+| v0.7.0 | Phase 7 — reach (optional): opt-in sync, iOS companion, on-device AI | future / if asked |
 | v0.7.x | Performance fixes against measured budgets | as needed |
 | v1.0.0 | First public release: notarized .dmg, website, announcement | when ready |
 

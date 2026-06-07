@@ -10,6 +10,18 @@ enum ClipFilter: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Short label for the popup's compact pill filters.
+    var shortName: String {
+        switch self {
+        case .all: return "All"
+        case .pinned: return "Pinned"
+        case .text: return "Text"
+        case .links: return "Links"
+        case .images: return "Images"
+        case .files: return "Files"
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .all: return "clock"
@@ -175,12 +187,23 @@ struct MainWindowView: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search \(searchTitle)…", text: $query)
+        HStack(spacing: 9) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+            TextField("Search \(searchTitle)", text: $query)
                 .textFieldStyle(.plain)
+                .font(.system(size: 14))
         }
-        .padding(10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.fieldRadius, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
     }
 
     private var list: some View {
@@ -229,7 +252,8 @@ struct MainWindowView: View {
                     }
                 }
             }
-            .padding(8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
         }
     }
 
@@ -363,32 +387,12 @@ private struct MainItemRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            icon.frame(width: 32, height: 32)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.previewTitle)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                HStack(spacing: 6) {
-                    if let category = itemCategory {
-                        HStack(spacing: 3) {
-                            Circle().fill(category.color).frame(width: 6, height: 6)
-                            Text(category.name)
-                        }
-                    }
-                    if let app = item.sourceAppName { Text(app) }
-                    Text(item.copiedAt, style: .relative)
-                    if let url = item.asURL, item.linkTitle != nil {
-                        Text(url.host ?? "").lineLimit(1)
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            }
-
-            Spacer(minLength: 8)
-
+        ClipCard(item: item,
+                 category: itemCategory,
+                 isSelected: isMultiSelected || hovering,
+                 quickSlot: hovering ? nil : quickSlot,
+                 isQueued: hovering ? false : isQueued)
+        .overlay(alignment: .trailing) {
             if hovering {
                 HStack(spacing: 4) {
                     rowButton("doc.on.clipboard", help: "Copy") { onCopy() }
@@ -418,40 +422,15 @@ private struct MainItemRow: View {
                     .frame(width: 24)
                     .help("More actions")
                 }
-            } else {
-                if let slot = quickSlot {
-                    Text("⌃⌥\(slot + 1)")
-                        .font(.caption2.monospaced())
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Color.purple.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
-                        .foregroundStyle(.purple)
-                        .help("Quick-paste shortcut")
-                }
-                if isQueued {
-                    Image(systemName: "text.line.first.and.arrowtriangle.forward")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                        .help("In the paste queue")
-                }
-                if item.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
+                .padding(.trailing, Theme.cardPaddingH)
+                .background(.regularMaterial, in: Capsule())
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isMultiSelected ? Color.accentColor.opacity(0.18)
-                      : hovering ? Color.primary.opacity(0.06) : Color.clear)
-        )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
                 .strokeBorder(isMultiSelected ? Color.accentColor.opacity(0.6) : Color.clear)
         )
-        .contentShape(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
         .onHover { hovering = $0 }
         .onTapGesture {
             let mods = NSEvent.modifierFlags
@@ -542,34 +521,6 @@ private struct MainItemRow: View {
         .help(help)
     }
 
-    @ViewBuilder
-    private var icon: some View {
-        if let png = item.linkIconPNG, let img = NSImage(data: png) {
-            Image(nsImage: img)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 24, height: 24)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
-        } else {
-            switch item.content {
-            case .text:
-                Image(systemName: item.asURL != nil ? "link" : "text.alignleft")
-                    .foregroundStyle(.secondary)
-            case .image:
-                if let img = item.nsImage() {
-                    Image(nsImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 32, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                } else {
-                    Image(systemName: "photo")
-                }
-            case .fileURLs:
-                Image(systemName: "doc").foregroundStyle(.secondary)
-            }
-        }
-    }
 }
 
 // MARK: - Trash row

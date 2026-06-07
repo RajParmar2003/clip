@@ -27,6 +27,8 @@
 		A10000010000000000000012 /* ScreenshotWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000014 /* ScreenshotWatcher.swift */; };
 		A10000010000000000000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000015 /* Assets.xcassets */; };
 		A10000010000000000000014 /* QuickPasteHotKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000016 /* QuickPasteHotKeys.swift */; };
+		A10000010000000000000015 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000017 /* Theme.swift */; };
+		A10000010000000000000016 /* ClipCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000018 /* ClipCard.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,6 +54,8 @@
 		A10000020000000000000014 /* ScreenshotWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotWatcher.swift; sourceTree = "<group>"; };
 		A10000020000000000000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A10000020000000000000016 /* QuickPasteHotKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickPasteHotKeys.swift; sourceTree = "<group>"; };
+		A10000020000000000000017 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		A10000020000000000000018 /* ClipCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipCard.swift; sourceTree = "<group>"; };
 		A10000030000000000000001 /* Clip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -96,6 +100,8 @@
 				A10000020000000000000013 /* OCRService.swift */,
 				A10000020000000000000014 /* ScreenshotWatcher.swift */,
 				A10000020000000000000016 /* QuickPasteHotKeys.swift */,
+				A10000020000000000000017 /* Theme.swift */,
+				A10000020000000000000018 /* ClipCard.swift */,
 				A10000020000000000000015 /* Assets.xcassets */,
 				A10000020000000000000009 /* Info.plist */,
 				A1000002000000000000000A /* Clip.entitlements */,
@@ -199,6 +205,8 @@
 				A10000010000000000000011 /* OCRService.swift in Sources */,
 				A10000010000000000000012 /* ScreenshotWatcher.swift in Sources */,
 				A10000010000000000000014 /* QuickPasteHotKeys.swift in Sources */,
+				A10000010000000000000015 /* Theme.swift in Sources */,
+				A10000010000000000000016 /* ClipCard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

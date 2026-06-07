@@ -64,7 +64,13 @@ Research: these are the features that remain genuinely power-exclusive across th
 5b. **Current-clipboard inspector** (requested): a pinned strip at the top of the popup and window showing exactly what's on the system clipboard *right now* — type, preview, size, source app — so you always know what ⌘V is about to paste before you paste it. Includes a "clear clipboard" action.
 6. **Scripting surface**: a small CLI (`clip list`, `clip get N`, `clip search`) and Shortcuts.app actions. Power users on HN consistently reward scriptability with loyalty.
 
-## Phase 7 — Reach (optional / future — the honest trade-offs)
+## Phase 7 — UI overhaul (v0.7.0)
+
+The "pre-release UI" becomes the real deal. The current views are functional but read like a settings panel — tiny icons, cramped rows, three sizes of gray. This phase makes Clip *look* like a premium Mac product people respect, without touching the engine.
+
+Direction (designed and approved): the popup is the hero. A calm, content-forward **card list** — each clip in its own padded, rounded card with comfortable spacing (≈7–8 visible, present but not sparse). Two type sizes only (a clear title + one muted metadata line). Rounded **glyph tiles** anchor each row with a subtle type-based tint (amber for images the standout); deliberately **no** full-size image previews and **no** rich link cards — restraint over decoration. Color means one thing: the category dot. A generously padded search field as the focal point, soft pill filters, a quiet two-shortcut footer. A proper **light/dark pair** (warm off-white, not clinical), matching the icon's minimal-premium personality. The window reuses the identical cards with a quiet sidebar library (All / Pinned / Trash + category dots). Personality: quiet-premium and universal — high-end for Mac users, instantly legible for everyone.
+
+## Phase 8 — Reach (optional / future — the honest trade-offs)
 
 Deliberately deprioritized to last and marked optional. Unlike every other phase, each item here depends on something outside the code (an iCloud entitlement, a second app target, a specific macOS version) and carries data-corruption risk that the rest of the app doesn't. Build only if real users ask for multi-device sync — performance (Phase 6) and the v1.0.0 release deliver more value at far less risk first.
 
@@ -145,7 +151,8 @@ Minor version = phase. Patch version = fixes within that phase. v1.0.0 is reserv
 | v0.5.0 | Phase 5 — screenshot integration + clipboard inspector | next |
 | v0.5.x | Power extras: per-clip hotkeys, snippets, CLI | in progress |
 | v0.6.0 | Phase 6 — performance hardening: PID profiling + optimization | next |
-| v0.7.0 | Phase 7 — reach (optional): opt-in sync, iOS companion, on-device AI | future / if asked |
+| v0.7.0 | Phase 7 — UI overhaul: premium card-based redesign | next |
+| v0.8.0 | Phase 8 — reach (optional): opt-in sync, iOS companion, on-device AI | future / if asked |
 | v0.7.x | Performance fixes against measured budgets | as needed |
 | v1.0.0 | First public release: notarized .dmg, website, announcement | when ready |
 

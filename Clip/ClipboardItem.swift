@@ -101,7 +101,23 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     }
 
     func nsImage() -> NSImage? {
-        if case .image(let data) = content { return NSImage(data: data) }
-        return nil
+        guard case .image(let data) = content else { return nil }
+        // Cache the decoded thumbnail by item id so scrolling/hover/selection
+        // re-renders don't re-decode the same PNG every frame.
+        if let cached = ThumbnailCache.shared.image(for: id) { return cached }
+        guard let img = NSImage(data: data) else { return nil }
+        ThumbnailCache.shared.store(img, for: id)
+        return img
     }
+}
+
+/// Small in-memory cache of decoded row thumbnails, keyed by item id.
+final class ThumbnailCache {
+    static let shared = ThumbnailCache()
+    private let cache = NSCache<NSUUID, NSImage>()
+
+    init() { cache.countLimit = 600 }
+
+    func image(for id: UUID) -> NSImage? { cache.object(forKey: id as NSUUID) }
+    func store(_ image: NSImage, for id: UUID) { cache.setObject(image, forKey: id as NSUUID) }
 }

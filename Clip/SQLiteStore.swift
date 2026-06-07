@@ -65,6 +65,33 @@ final class SQLiteStore {
         if version < 2 { migrateToV2() }
         if version < 3 { migrateToV3() }
         if version < 4 { migrateToV4() }
+        if version < 5 { migrateToV5() }
+    }
+
+    /// v5: a tiny (≤64px) thumbnail column so list/working-set reads never
+    /// materialize full image blobs into memory. The full image stays in
+    /// image_data (small) or on disk (large); paste loads it on demand.
+    private func migrateToV5() {
+        let hasColumn = scalarInt("SELECT COUNT(*) FROM pragma_table_info('items') WHERE name = 'thumb'") ?? 0
+        if hasColumn == 0 {
+            exec("ALTER TABLE items ADD COLUMN thumb BLOB")
+        }
+        // Backfill thumbnails for existing image rows (one-time, bounded work).
+        backfillThumbnails()
+        exec("PRAGMA user_version = 5")
+    }
+
+    private func backfillThumbnails() {
+        let ids = column("SELECT id FROM items WHERE kind = 1 AND thumb IS NULL", [])
+        for idStr in ids {
+            guard let id = UUID(uuidString: idStr) else { continue }
+            // Load the full image via the existing accessor and shrink it.
+            if let item = fetchOne(where: "id = ?", binds: [.text(idStr)]),
+               let full = loadFullImage(for: item),
+               let thumb = Self.thumbnailPNG(from: full, maxDimension: 64) {
+                run("UPDATE items SET thumb = ? WHERE id = ?", [.blobOpt(thumb), .text(id.uuidString)])
+            }
+        }
     }
 
     /// v4: Trash. Deletes become recoverable — deleted_at marks an item as
@@ -306,6 +333,7 @@ final class SQLiteStore {
         var stored = item
         var imageBlob: Data?
         var imagePath: String?
+        var thumbBlob: Data?
         var text: String?
         var filePathsJSON: String?
         let kind: Int
@@ -318,10 +346,13 @@ final class SQLiteStore {
             let prepared = prepareImageStorage(fullPNG: d, hash: hash)
             imageBlob = prepared.inDB
             imagePath = prepared.path
-            if prepared.path != nil {
-                stored.content = .image(prepared.inDB) // memory holds the thumbnail
-                stored.imageFile = prepared.path
-            }
+            // Tiny thumbnail for list rows — the only image bytes the working
+            // set ever holds in memory.
+            thumbBlob = Self.thumbnailPNG(from: d, maxDimension: 64)
+            // In memory, the stored item carries only the thumbnail; the full
+            // image is reloaded from disk/DB on paste.
+            stored.content = .image(thumbBlob ?? prepared.inDB)
+            stored.imageFile = prepared.path
         case .fileURLs(let paths):
             kind = 2
             filePathsJSON = String(data: (try? JSONEncoder().encode(paths)) ?? Data("[]".utf8),
@@ -330,8 +361,8 @@ final class SQLiteStore {
 
         run("""
         INSERT INTO items (id, kind, text, image_data, image_path, file_paths, content_hash,
-                           copied_at, pinned, source_bundle, source_name, rtf, html, link_title, link_icon, category_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                           copied_at, pinned, source_bundle, source_name, rtf, html, link_title, link_icon, category_id, thumb)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, [
             .text(item.id.uuidString), .int(kind), .textOpt(text),
             .blobOpt(imageBlob), .textOpt(imagePath), .textOpt(filePathsJSON),
@@ -340,7 +371,7 @@ final class SQLiteStore {
             .textOpt(item.sourceAppBundleID), .textOpt(item.sourceAppName),
             .blobOpt(item.rtfData), .blobOpt(item.htmlData),
             .textOpt(item.linkTitle), .blobOpt(item.linkIconPNG),
-            .textOpt(item.categoryID?.uuidString),
+            .textOpt(item.categoryID?.uuidString), .blobOpt(thumbBlob),
         ])
         return stored
     }
@@ -427,12 +458,27 @@ final class SQLiteStore {
     }
 
     func fetchItems(categoryID: UUID, limit: Int = 2_000) -> [ClipboardItem] {
-        query("SELECT * FROM items WHERE category_id = ? AND deleted_at IS NULL ORDER BY pinned DESC, copied_at DESC LIMIT ?",
+        query("SELECT \(Self.lightCols) FROM items WHERE category_id = ? AND deleted_at IS NULL ORDER BY pinned DESC, copied_at DESC LIMIT ?",
               [.text(categoryID.uuidString), .int(limit)])
     }
 
     func fetchItem(id: UUID) -> ClipboardItem? {
         fetchOne(where: "id = ? AND deleted_at IS NULL", binds: [.text(id.uuidString)])
+    }
+
+    /// Lazily loads rich-text (RTF/HTML) for a text item at paste time, since
+    /// the working set no longer keeps these blobs resident.
+    func richText(for id: UUID) -> (Data?, Data?) {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT rtf, html FROM items WHERE id = ? LIMIT 1", -1, &stmt, nil) == SQLITE_OK else { return (nil, nil) }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return (nil, nil) }
+        func blob(_ i: Int32) -> Data? {
+            guard let p = sqlite3_column_blob(stmt, i) else { return nil }
+            return Data(bytes: p, count: Int(sqlite3_column_bytes(stmt, i)))
+        }
+        return (blob(0), blob(1))
     }
 
     /// Soft delete: moves the item to the Trash. Image files stay on disk
@@ -465,7 +511,7 @@ final class SQLiteStore {
     }
 
     func fetchTrash(limit: Int = 2_000) -> [ClipboardItem] {
-        query("SELECT * FROM items WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?",
+        query("SELECT \(Self.lightCols) FROM items WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?",
               [.int(limit)])
     }
 
@@ -518,12 +564,22 @@ final class SQLiteStore {
 
     // MARK: - Reads
 
+    /// Columns for list/working-set reads. Deliberately selects the tiny
+    /// `thumb` (aliased into the image_data slot) instead of the full
+    /// `image_data`, and NULLs out `rtf`/`html`, so browsing never pulls heavy
+    /// blobs into memory. Paste reloads the full image + rich text on demand.
+    /// Column order matches what item(from:) expects.
+    private static let lightCols =
+        "id, kind, text, thumb AS image_data, image_path, file_paths, content_hash, " +
+        "copied_at, pinned, source_bundle, source_name, NULL AS rtf, NULL AS html, " +
+        "link_title, link_icon, category_id, ocr_text"
+
     /// Working set: all pinned + most recent unpinned, newest first, pinned on top.
     func fetchWorkingSet(recentLimit: Int) -> [ClipboardItem] {
         query("""
-        SELECT * FROM items WHERE pinned = 1 AND deleted_at IS NULL
+        SELECT * FROM (SELECT \(Self.lightCols) FROM items WHERE pinned = 1 AND deleted_at IS NULL)
         UNION ALL
-        SELECT * FROM (SELECT * FROM items WHERE pinned = 0 AND deleted_at IS NULL ORDER BY copied_at DESC LIMIT ?)
+        SELECT * FROM (SELECT \(Self.lightCols) FROM items WHERE pinned = 0 AND deleted_at IS NULL ORDER BY copied_at DESC LIMIT ?)
         ORDER BY pinned DESC, copied_at DESC
         """, [.int(recentLimit)])
     }
@@ -536,7 +592,7 @@ final class SQLiteStore {
         if q.count >= 3 {
             let escaped = q.replacingOccurrences(of: "\"", with: "\"\"")
             return query("""
-            SELECT items.* FROM items_fts
+            SELECT \(Self.lightColsPrefixed) FROM items_fts
             JOIN items ON items.rowid = items_fts.rowid
             WHERE items_fts MATCH '"' || ? || '"' AND items.deleted_at IS NULL
             ORDER BY items.pinned DESC, items.copied_at DESC LIMIT ?
@@ -547,7 +603,7 @@ final class SQLiteStore {
                 .replacingOccurrences(of: "%", with: "\\%")
                 .replacingOccurrences(of: "_", with: "\\_") + "%"
             return query("""
-            SELECT * FROM items
+            SELECT \(Self.lightCols) FROM items
             WHERE deleted_at IS NULL
               AND (text LIKE ? ESCAPE '\\' OR link_title LIKE ? ESCAPE '\\' OR ocr_text LIKE ? ESCAPE '\\')
             ORDER BY pinned DESC, copied_at DESC LIMIT ?
@@ -555,12 +611,31 @@ final class SQLiteStore {
         }
     }
 
+    /// Same projection as lightCols but with `items.` qualifiers, for the FTS join.
+    private static let lightColsPrefixed =
+        "items.id, items.kind, items.text, items.thumb AS image_data, items.image_path, " +
+        "items.file_paths, items.content_hash, items.copied_at, items.pinned, " +
+        "items.source_bundle, items.source_name, NULL AS rtf, NULL AS html, " +
+        "items.link_title, items.link_icon, items.category_id, items.ocr_text"
+
+    /// Loads the full-resolution image for paste. Large images live on disk;
+    /// small images live in the DB's image_data (the working-set item only
+    /// carries a thumbnail now, so we must fetch the real bytes by id).
     func loadFullImage(for item: ClipboardItem) -> Data? {
-        guard let file = item.imageFile else {
+        if let file = item.imageFile {
+            return try? Data(contentsOf: imagesDirURL.appendingPathComponent(file))
+        }
+        // Small image: pull image_data straight from the row.
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT image_data FROM items WHERE id = ? LIMIT 1", -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, item.id.uuidString, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_ROW, let p = sqlite3_column_blob(stmt, 0) else {
+            // Fallback: whatever bytes the item carries (thumbnail).
             if case .image(let d) = item.content { return d }
             return nil
         }
-        return try? Data(contentsOf: imagesDirURL.appendingPathComponent(file))
+        return Data(bytes: p, count: Int(sqlite3_column_bytes(stmt, 0)))
     }
 
     // MARK: - Stats

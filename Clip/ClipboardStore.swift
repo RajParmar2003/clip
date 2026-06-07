@@ -169,11 +169,16 @@ final class ClipboardStore: ObservableObject {
 
     private func scheduleTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+        // Create (don't schedule) then add ONCE to .common mode — avoids the
+        // double registration of scheduledTimer (default mode) + manual add
+        // (.common). .common keeps polling alive during menu/panel tracking.
+        // Wider tolerance lets the OS coalesce wakeups for lower energy.
+        let t = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
             self?.checkPasteboard()
         }
-        timer?.tolerance = 0.1
-        RunLoop.main.add(timer!, forMode: .common)
+        t.tolerance = 0.15
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
     @objc private func ensureMonitoring() {
@@ -471,8 +476,13 @@ final class ClipboardStore: ObservableObject {
         case .text(let s):
             pb.setString(s, forType: .string)
             if !plainTextOnly {
-                if let rtf = item.rtfData { pb.setData(rtf, forType: .rtf) }
-                if let html = item.htmlData { pb.setData(html, forType: .html) }
+                // Working-set items don't carry rich text in memory anymore;
+                // load it lazily so formatted paste still works.
+                let rich = item.rtfData != nil || item.htmlData != nil
+                    ? (item.rtfData, item.htmlData)
+                    : engine.richText(for: item.id)
+                if let rtf = rich.0 { pb.setData(rtf, forType: .rtf) }
+                if let html = rich.1 { pb.setData(html, forType: .html) }
             }
         case .image:
             // Large images live on disk; paste the full-resolution original.

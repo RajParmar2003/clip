@@ -10,73 +10,113 @@ struct HistoryPanelView: View {
 
     @State private var query = ""
     @State private var selectedIndex = 0
+    @State private var filter: ClipFilter = .all
     @FocusState private var searchFocused: Bool
 
     private var filtered: [ClipboardItem] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else {
-            return store.items.sorted { lhs, rhs in
+        let base: [ClipboardItem]
+        if q.isEmpty {
+            base = store.items.sorted { lhs, rhs in
                 if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
                 return lhs.copiedAt > rhs.copiedAt
             }
-        }
-        // Full-history search through the engine (FTS). For very short
-        // queries, blend in fuzzy matches from the working set so 1–2
-        // character typing still feels instant and forgiving.
-        var results = store.search(q)
-        if q.count < 3 {
-            let needle = q.lowercased()
-            let seen = Set(results.map(\.id))
-            results += store.items.filter {
-                !seen.contains($0.id) && fuzzyMatch(needle: needle, haystack: $0.searchableText.lowercased())
+        } else {
+            // Full-history search through the engine (FTS). For very short
+            // queries, blend in fuzzy matches from the working set so 1–2
+            // character typing still feels instant and forgiving.
+            var results = store.search(q)
+            if q.count < 3 {
+                let needle = q.lowercased()
+                let seen = Set(results.map(\.id))
+                results += store.items.filter {
+                    !seen.contains($0.id) && fuzzyMatch(needle: needle, haystack: $0.searchableText.lowercased())
+                }
             }
+            base = results
         }
-        return results
+        return base.filter { filter.matches($0) }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             searchBar
+            filterPills
             if let now = store.currentClipboard {
                 ClipboardNowStrip(summary: now) { store.clearSystemClipboard() }
             }
-            Divider()
             if filtered.isEmpty {
                 emptyState
             } else {
                 list
             }
-            Divider()
+            Divider().opacity(0.5)
             footer
         }
-        .frame(width: 420, height: 480)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .frame(width: 440, height: 520)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.panelRadius))
         .onAppear { resetState() }
         .onChange(of: controller.showGeneration) { _ in resetState() }
         .onChange(of: query) { _ in selectedIndex = 0 }
+        .onChange(of: filter) { _ in selectedIndex = 0 }
         .background(KeyCaptureView(onKeyDown: handleKey))
     }
 
     private var searchBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 9) {
             Image(systemName: "magnifyingglass")
+                .font(.system(size: 16))
                 .foregroundStyle(.secondary)
-            TextField("Search clipboard history…", text: $query)
+            TextField("Search everything you've copied", text: $query)
                 .textFieldStyle(.plain)
+                .font(.system(size: 15))
                 .focused($searchFocused)
                 .onSubmit { pasteSelected(plain: false) }
         }
-        .padding(12)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.fieldRadius, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+    }
+
+    private var filterPills: some View {
+        HStack(spacing: 7) {
+            ForEach(ClipFilter.allCases) { f in
+                Button {
+                    filter = f
+                } label: {
+                    Text(f.shortName)
+                        .font(.system(size: 13))
+                        .foregroundStyle(filter == f ? Color(NSColor.windowBackgroundColor) : .secondary)
+                        .padding(.horizontal, filter == f ? 13 : 6)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule().fill(filter == f ? Color.primary : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
     }
 
     private var list: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 2) {
+                LazyVStack(spacing: Theme.rowGap) {
                     ForEach(Array(filtered.enumerated()), id: \.element.id) { index, item in
-                        ItemRow(item: item,
-                                isSelected: index == selectedIndex,
-                                shortcutNumber: index < 9 ? index + 1 : nil)
+                        ClipCard(item: item,
+                                 category: store.categories.first { $0.id == item.categoryID },
+                                 isSelected: index == selectedIndex,
+                                 quickSlot: quickPaste.slot(for: item.id),
+                                 isQueued: queue.contains(item))
                             .id(item.id)
                             .onTapGesture {
                                 selectedIndex = index
@@ -133,7 +173,8 @@ struct HistoryPanelView: View {
                             }
                     }
                 }
-                .padding(6)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
             }
             .onChange(of: selectedIndex) { newIndex in
                 guard filtered.indices.contains(newIndex) else { return }
@@ -143,43 +184,53 @@ struct HistoryPanelView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Spacer()
-            Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 32))
+            Image(systemName: filter == .all ? "tray" : filter.systemImage)
+                .font(.system(size: 30, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text(query.isEmpty ? "Nothing copied yet" : "No matches")
+            Text(query.isEmpty ? "Nothing here yet" : "No matches")
+                .font(.system(size: 14))
                 .foregroundStyle(.secondary)
             Spacer()
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var footer: some View {
-        HStack(spacing: 12) {
-            Label("⏎ paste", systemImage: "")
-                .labelStyle(.titleOnly)
-            Text("⌥⏎ plain")
-            Text("⌘P pin")
+        HStack(spacing: 14) {
+            shortcutHint("return", "paste")
+            shortcutHint("⌘P", "pin")
             Spacer()
             if !queue.isEmpty {
                 Text("⌃⌘V next of \(queue.count)")
+                    .font(.system(size: 12))
                     .foregroundStyle(.blue)
             }
-            Text("\(filtered.count) items")
+            Text("\(filtered.count) clips")
+                .font(.system(size: 12))
+                .foregroundStyle(.tertiary)
             Button {
                 controller.hide()
                 NotificationCenter.default.post(name: .clipOpenMainWindow, object: nil)
             } label: {
                 Image(systemName: "macwindow")
+                    .font(.system(size: 13))
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
             .help("Open Clip Window")
         }
-        .font(.caption)
-        .foregroundStyle(.tertiary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 11)
+    }
+
+    private func shortcutHint(_ key: String, _ label: String) -> some View {
+        HStack(spacing: 4) {
+            Text(key).foregroundStyle(.secondary)
+            Text(label).foregroundStyle(.tertiary)
+        }
+        .font(.system(size: 12))
     }
 
     // MARK: - Keyboard
@@ -288,80 +339,6 @@ struct ClipboardNowStrip: View {
         .padding(.vertical, 4)
         .background(Color.primary.opacity(0.04))
         .help("This is what's on your clipboard right now")
-    }
-}
-
-// MARK: - Row
-
-private struct ItemRow: View {
-    let item: ClipboardItem
-    let isSelected: Bool
-    let shortcutNumber: Int?
-
-    var body: some View {
-        HStack(spacing: 10) {
-            icon
-                .frame(width: 28, height: 28)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.previewTitle)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                HStack(spacing: 6) {
-                    if let app = item.sourceAppName {
-                        Text(app)
-                    }
-                    Text(item.copiedAt, style: .relative)
-                    if let count = item.characterCount {
-                        Text("\(count) chars")
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
-
-            if item.isPinned {
-                Image(systemName: "pin.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            if let n = shortcutNumber {
-                Text("⌘\(n)")
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? Color.accentColor.opacity(0.25) : Color.clear)
-        )
-        .contentShape(Rectangle())
-    }
-
-    @ViewBuilder
-    private var icon: some View {
-        switch item.content {
-        case .text:
-            Image(systemName: "text.alignleft")
-                .foregroundStyle(.secondary)
-        case .image:
-            if let img = item.nsImage() {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 28, height: 28)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-            } else {
-                Image(systemName: "photo")
-            }
-        case .fileURLs:
-            Image(systemName: "doc")
-                .foregroundStyle(.secondary)
-        }
     }
 }
 

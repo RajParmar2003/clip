@@ -10,6 +10,18 @@ enum ClipFilter: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Short label for the popup's compact pill filters.
+    var shortName: String {
+        switch self {
+        case .all: return "All"
+        case .pinned: return "Pinned"
+        case .text: return "Text"
+        case .links: return "Links"
+        case .images: return "Images"
+        case .files: return "Files"
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .all: return "clock"

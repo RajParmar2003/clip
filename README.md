@@ -53,3 +53,4 @@ Until the notarized download ships (v1.0.0), build from source:
 ## License
 
 MIT © 2026 Raj Parmar
+
